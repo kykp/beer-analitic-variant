@@ -39,6 +39,7 @@ body {
   letter-spacing: -0.005em;
   background: #fff;
   color: var(--text);
+  overflow-x: hidden;
 }
 
 h1, h2, h3 {
@@ -56,9 +57,9 @@ h1, h2, h3 {
 }
 
 .topbar-inner {
-  max-width: 1600px;
+  max-width: 1920px;
   margin: 0 auto;
-  padding: 14px 32px;
+  padding: 14px 20px;
   display: grid;
   grid-template-columns: 220px 1fr 200px;
   gap: 24px;
@@ -125,9 +126,10 @@ h1, h2, h3 {
 /* ---------- PAGE ---------- */
 
 .page {
-  max-width: 1600px;
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
-  padding: 32px;
+  padding: 28px 32px;
 }
 
 .toolbar {
@@ -311,9 +313,9 @@ h2.section-title {
 
 .name-col {
   left: 0;
-  width: 320px;
-  min-width: 320px;
-  max-width: 320px;
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
   text-align: left !important;
   padding-left: 20px !important;
   box-shadow: 1px 0 0 var(--border);
@@ -412,7 +414,7 @@ td.name-col.beer-name {
 }
 
 .days-table thead th {
-  padding: 10px 6px;
+  padding: 10px 4px;
   text-align: center;
   text-transform: none;
   letter-spacing: 0;
@@ -420,11 +422,11 @@ td.name-col.beer-name {
 }
 
 .days-table tbody td {
-  padding: 12px 6px;
+  padding: 12px 4px;
 }
 
 .day-col {
-  min-width: 46px;
+  min-width: 38px;
   text-align: center;
 }
 
@@ -459,7 +461,7 @@ td.name-col.beer-name {
 }
 
 .total-col {
-  min-width: 88px;
+  min-width: 76px;
   background: #f7f9fc;
 }
 
