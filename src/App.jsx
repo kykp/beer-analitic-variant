@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import {
   beerData as initialBeerData,
   currentMonthKey,
@@ -217,22 +217,6 @@ export default function App() {
     setBeers((prev) => prev.map((b) => (b.id === beerId ? { ...b, salesByDay: nextSalesByDay } : b)))
   }
 
-  const scrollRef = useRef(null)
-  useLayoutEffect(() => {
-    if (selected) return
-    const container = scrollRef.current
-    if (!container) return
-    const todayCol = container.querySelector('thead .day-col.today')
-    if (!todayCol) return
-    const containerRect = container.getBoundingClientRect()
-    const colRect = todayCol.getBoundingClientRect()
-    const stickyOffset = 320
-    const desired =
-      colRect.left - containerRect.left + container.scrollLeft
-      - (containerRect.width - stickyOffset) / 2 + colRect.width / 2 - stickyOffset
-    container.scrollLeft = Math.max(0, desired + stickyOffset)
-  }, [])
-
   if (selected) {
     return (
       <BeerDetails
@@ -267,7 +251,7 @@ export default function App() {
         </div>
 
         <div className="table-wrap">
-          <div className="table-scroll" ref={scrollRef}>
+          <div className="table-scroll">
             <table className="beer-table days-table">
               <thead>
                 <tr>
