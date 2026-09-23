@@ -1,7 +1,7 @@
 export const chains = [
-  { id: 'lenta', name: 'Лента' },
-  { id: 'pyaterochka', name: 'Пятёрочка' },
-  { id: 'perekrestok', name: 'Перекрёсток' }
+  { id: 'lenta', name: 'Лента', color: '#FEBE10', hasWordmark: true },
+  { id: 'pyaterochka', name: 'Пятёрочка', color: '#EB2316', hasWordmark: true },
+  { id: 'perekrestok', name: 'Перекрёсток', color: '#00723A', hasWordmark: true }
 ]
 
 export const defaultChainId = chains[0].id
