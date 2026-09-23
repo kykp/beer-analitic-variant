@@ -1,9 +1,16 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import {
   beerData as initialBeerData,
+  chains,
+  defaultChainId,
   currentMonthKey,
   getMonthDays,
   getMonthLabel,
+  getEditableDays,
+  getEditableCutoffDate,
+  EDITABLE_LEAD_DAYS,
+  ACTUAL_LAG_DAYS,
+  getActualCutoffDate,
   todayStr
 } from './mockData.js'
 
@@ -24,6 +31,26 @@ function dayInfo(dateStr) {
 }
 
 const STORAGE_PREFIX = 'mosbrew_beer_plan_v1_'
+const STORAGE_STATUS_PREFIX = 'mosbrew_plan_status_v1_'
+
+function statusKey(chainId, monthKey) {
+  return `${STORAGE_STATUS_PREFIX}${chainId}_${monthKey}`
+}
+
+function loadPlanStatus(chainId, monthKey) {
+  try {
+    const raw = localStorage.getItem(statusKey(chainId, monthKey))
+    return raw === 'approved' ? 'approved' : 'draft'
+  } catch {
+    return 'draft'
+  }
+}
+
+function savePlanStatus(chainId, monthKey, status) {
+  try {
+    localStorage.setItem(statusKey(chainId, monthKey), status)
+  } catch {}
+}
 
 function loadBeerPlan(beerId) {
   try {
@@ -139,7 +166,7 @@ function applyPlansToBeers(beers) {
     if (!plan) return beer
     const salesByDay = { ...beer.salesByDay }
     for (const day of monthDays) {
-      salesByDay[day] = plan.shipmentDays.has(day) ? plan.overrides[day] || 0 : 0
+      salesByDay[day] = plan.overrides[day] || 0
     }
     return { ...beer, salesByDay }
   })
@@ -148,22 +175,104 @@ function applyPlansToBeers(beers) {
 export default function App() {
   const [beers, setBeers] = useState(() => applyPlansToBeers(initialBeerData))
   const [selectedId, setSelectedId] = useState(null)
+  const [selectedBrand, setSelectedBrand] = useState(null)
+  const [selectedChainId, setSelectedChainId] = useState(defaultChainId)
+  const [planStatus, setPlanStatus] = useState(() =>
+    loadPlanStatus(defaultChainId, currentMonthKey)
+  )
+
+  useEffect(() => {
+    setPlanStatus(loadPlanStatus(selectedChainId, currentMonthKey))
+  }, [selectedChainId])
   const [collapsedBrands, setCollapsedBrands] = useState(() => {
     const brands = new Set()
     initialBeerData.forEach((b) => brands.add(b.brand))
     return brands
   })
+  const [rowMenu, setRowMenu] = useState(null)
+  const [brandMenu, setBrandMenu] = useState(null)
+  const [viewMode, setViewMode] = useState('plan') // 'plan' | 'variance'
+
+  function openRowMenu(e, beerId) {
+    e.preventDefault()
+    e.stopPropagation()
+    const menuWidth = 200
+    const menuMaxHeight = 200
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8)
+    const y = Math.min(e.clientY, window.innerHeight - menuMaxHeight - 8)
+    setRowMenu({ x, y, beerId })
+  }
+
+  function openRowMenuFromKebab(e, beerId) {
+    e.preventDefault()
+    e.stopPropagation()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const menuWidth = 200
+    const menuMaxHeight = 200
+    const x = Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)
+    const y = Math.min(rect.bottom + 4, window.innerHeight - menuMaxHeight - 8)
+    setRowMenu({ x, y, beerId })
+  }
+
+  function openBrandMenuFromKebab(e, brand) {
+    e.preventDefault()
+    e.stopPropagation()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const menuWidth = 220
+    const menuMaxHeight = 200
+    const x = Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)
+    const y = Math.min(rect.bottom + 4, window.innerHeight - menuMaxHeight - 8)
+    setBrandMenu({ x, y, brand })
+  }
 
   const monthDays = useMemo(() => getMonthDays(currentMonthKey), [])
   const monthLabel = useMemo(() => getMonthLabel(currentMonthKey), [])
+  const editableDays = useMemo(
+    () => new Set(getEditableDays(currentMonthKey, EDITABLE_LEAD_DAYS)),
+    []
+  )
+  const editableCutoff = useMemo(
+    () => getEditableCutoffDate(EDITABLE_LEAD_DAYS),
+    []
+  )
+  const editableCutoffLabel = useMemo(
+    () =>
+      new Date(editableCutoff).toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'long'
+      }),
+    [editableCutoff]
+  )
+
+  function togglePlanStatus() {
+    setPlanStatus((prev) => {
+      const next = prev === 'approved' ? 'draft' : 'approved'
+      savePlanStatus(selectedChainId, currentMonthKey, next)
+      return next
+    })
+  }
+
+  const isApproved = planStatus === 'approved'
+  const selectedChainName = useMemo(
+    () => chains.find((c) => c.id === selectedChainId)?.name ?? '',
+    [selectedChainId]
+  )
+
+  const remainingDays = useMemo(
+    () => monthDays.filter((d) => d >= todayStr),
+    [monthDays]
+  )
 
   const beerRows = useMemo(
     () =>
-      beers.map((b) => {
-        const total = monthDays.reduce((s, d) => s + b.salesByDay[d], 0)
-        return { ...b, monthTotal: total }
-      }),
-    [beers, monthDays]
+      beers
+        .filter((b) => b.chainIds?.includes(selectedChainId))
+        .map((b) => {
+          const total = monthDays.reduce((s, d) => s + b.salesByDay[d], 0)
+          const remaining = remainingDays.reduce((s, d) => s + (b.salesByDay[d] || 0), 0)
+          return { ...b, monthTotal: total, remaining }
+        }),
+    [beers, monthDays, remainingDays, selectedChainId]
   )
 
   const brandGroups = useMemo(() => {
@@ -183,7 +292,8 @@ export default function App() {
         byDay[day] = skus.reduce((s, b) => s + b.salesByDay[day], 0)
       }
       const monthTotal = skus.reduce((s, b) => s + b.monthTotal, 0)
-      return { brand, skus, byDay, monthTotal }
+      const remaining = skus.reduce((s, b) => s + b.remaining, 0)
+      return { brand, skus, byDay, monthTotal, remaining }
     })
   }, [beerRows, monthDays])
 
@@ -193,7 +303,8 @@ export default function App() {
       byDay[day] = beerRows.reduce((s, b) => s + b.salesByDay[day], 0)
     }
     const grand = Object.values(byDay).reduce((s, v) => s + v, 0)
-    return { byDay, grand }
+    const remaining = beerRows.reduce((s, b) => s + b.remaining, 0)
+    return { byDay, grand, remaining }
   }, [beerRows, monthDays])
 
   function toggleBrand(brand) {
@@ -212,9 +323,127 @@ export default function App() {
   }
 
   const selected = selectedId ? beers.find((b) => b.id === selectedId) : null
+  const brandBeers = useMemo(
+    () =>
+      selectedBrand
+        ? beers.filter(
+            (b) => b.brand === selectedBrand && b.chainIds?.includes(selectedChainId)
+          )
+        : [],
+    [beers, selectedBrand, selectedChainId]
+  )
 
   function updateBeerSales(beerId, nextSalesByDay) {
     setBeers((prev) => prev.map((b) => (b.id === beerId ? { ...b, salesByDay: nextSalesByDay } : b)))
+  }
+
+  // Раскидывает totalUnits гл по SKU выбранного бренда на дни targetDays.
+  // Веса дней = текущая сумма продаж бренда по дню.
+  // Веса SKU внутри дня = текущая доля этого SKU в дневной сумме бренда.
+  // Если сумма нулевая — распределяем равномерно.
+  // Значения ДОБАВЛЯЮТСЯ к текущим, а не заменяют.
+  function addShipmentToBrandOnDays(brand, totalUnits, targetDays) {
+    if (totalUnits <= 0 || !targetDays || targetDays.length === 0) return
+    const targetBeers = beers.filter(
+      (b) => b.brand === brand && b.chainIds?.includes(selectedChainId)
+    )
+    if (targetBeers.length === 0) return
+
+    const dayList = targetDays.filter(
+      (d) => d >= todayStr && (!isApproved || editableDays.has(d))
+    )
+    if (dayList.length === 0) return
+
+    const brandDayWeight = {}
+    for (const d of dayList) {
+      brandDayWeight[d] = targetBeers.reduce((s, b) => s + (b.salesByDay[d] || 0), 0)
+    }
+    const weightSum = dayList.reduce((s, d) => s + brandDayWeight[d], 0)
+
+    const addByDay = {}
+    if (weightSum > 0) {
+      const parts = dayList.map((day) => {
+        const exact = totalUnits * (brandDayWeight[day] / weightSum)
+        const floor = Math.floor(exact)
+        return { day, floor, frac: exact - floor }
+      })
+      let leftover = totalUnits - parts.reduce((s, p) => s + p.floor, 0)
+      parts.sort((a, b) => b.frac - a.frac)
+      for (let i = 0; i < parts.length && leftover > 0; i++) {
+        parts[i].floor += 1
+        leftover -= 1
+      }
+      for (const p of parts) addByDay[p.day] = p.floor
+    } else {
+      const per = Math.floor(totalUnits / dayList.length)
+      let leftover = totalUnits - per * dayList.length
+      for (const d of dayList) {
+        addByDay[d] = per + (leftover > 0 ? 1 : 0)
+        if (leftover > 0) leftover -= 1
+      }
+    }
+
+    const skuAdds = new Map()
+    for (const day of dayList) {
+      const addForDay = addByDay[day] || 0
+      if (addForDay === 0) continue
+      const skuValues = targetBeers.map((b) => ({ id: b.id, val: b.salesByDay[day] || 0 }))
+      const skuSum = skuValues.reduce((s, x) => s + x.val, 0)
+
+      let parts
+      if (skuSum > 0) {
+        parts = skuValues.map(({ id, val }) => {
+          const exact = addForDay * (val / skuSum)
+          const floor = Math.floor(exact)
+          return { id, floor, frac: exact - floor }
+        })
+      } else {
+        const per = Math.floor(addForDay / skuValues.length)
+        parts = skuValues.map(({ id }) => ({ id, floor: per, frac: 0 }))
+      }
+      let leftover = addForDay - parts.reduce((s, p) => s + p.floor, 0)
+      parts.sort((a, b) => b.frac - a.frac)
+      for (let i = 0; i < parts.length && leftover > 0; i++) {
+        parts[i].floor += 1
+        leftover -= 1
+      }
+
+      for (const p of parts) {
+        if (!skuAdds.has(p.id)) skuAdds.set(p.id, {})
+        skuAdds.get(p.id)[day] = p.floor
+      }
+    }
+
+    setBeers((prev) =>
+      prev.map((b) => {
+        if (!skuAdds.has(b.id)) return b
+        const perDayAdd = skuAdds.get(b.id)
+        const nextSales = { ...b.salesByDay }
+        for (const [day, add] of Object.entries(perDayAdd)) {
+          nextSales[day] = (nextSales[day] || 0) + add
+        }
+
+        // Снапшотим все дни месяца в overrides, чтобы applyPlansToBeers
+        // на следующей загрузке не занулил дни, которых нет в overrides.
+        const existing = loadBeerPlan(b.id) || {
+          overrides: {},
+          totalUnits: 5000,
+          pinned: new Set()
+        }
+        const nextOverrides = { ...existing.overrides }
+        for (const day of monthDays) {
+          nextOverrides[day] = nextSales[day] || 0
+        }
+        const nextTotal = Object.values(nextOverrides).reduce((s, v) => s + v, 0)
+        saveBeerPlan(b.id, {
+          shipmentDays: [],
+          overrides: nextOverrides,
+          totalUnits: nextTotal,
+          pinned: existing.pinned || new Set()
+        })
+        return { ...b, salesByDay: nextSales }
+      })
+    )
   }
 
   if (selected) {
@@ -224,6 +453,30 @@ export default function App() {
         beer={selected}
         onBack={() => setSelectedId(null)}
         onChange={(next) => updateBeerSales(selected.id, next)}
+        isApproved={isApproved}
+        editableDays={editableDays}
+      />
+    )
+  }
+
+  if (selectedBrand) {
+    const remainingTargetDays = monthDays.filter(
+      (d) => d >= todayStr && (!isApproved || editableDays.has(d))
+    )
+    return (
+      <BrandDetails
+        key={selectedBrand}
+        brand={selectedBrand}
+        beers={brandBeers}
+        onBack={() => setSelectedBrand(null)}
+        onAddShipment={(units) =>
+          addShipmentToBrandOnDays(selectedBrand, units, remainingTargetDays)
+        }
+        onAddShipmentOnDay={(day, units) =>
+          addShipmentToBrandOnDays(selectedBrand, units, [day])
+        }
+        isApproved={isApproved}
+        editableDays={editableDays}
       />
     )
   }
@@ -233,13 +486,42 @@ export default function App() {
       <TopBar />
       <div className="page">
         <div className="toolbar">
-          <div>
-            <h1>План продаж</h1>
+          <div className="toolbar-heading">
+            <p className="eyebrow">План продаж</p>
+            <h1 className="chain-title">
+              <select
+                className="chain-title-select"
+                value={selectedChainId}
+                onChange={(e) => setSelectedChainId(e.target.value)}
+                aria-label="Выбор сети"
+              >
+                {chains.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <span className="chain-title-caret" aria-hidden="true">⌄</span>
+            </h1>
             <p className="subtitle">
-              {monthLabel} · план на месяц <strong>{formatNumber(totals.grand)}</strong> шт.
+              {monthLabel} · план на месяц <strong>{formatNumber(totals.grand)}</strong> гл
+              <span className={`status-badge ${isApproved ? 'is-approved' : 'is-draft'}`}>
+                {isApproved ? '● Утверждён' : '○ Черновик'}
+              </span>
             </p>
           </div>
           <div className="toolbar-actions">
+            <button
+              className={`btn-ghost status-toggle ${isApproved ? 'is-approved' : ''}`}
+              onClick={togglePlanStatus}
+              title={
+                isApproved
+                  ? `Вернуть план «${selectedChainName}» в черновик — снова можно править весь месяц`
+                  : `Утвердить план «${selectedChainName}» — ближайшие ${EDITABLE_LEAD_DAYS} дн. будут заморожены, редактируется только с ${editableCutoffLabel}`
+              }
+            >
+              {isApproved ? 'Вернуть в черновик' : 'Утвердить план'}
+            </button>
             <button className="btn-ghost" onClick={toggleAll}>
               {allCollapsed ? 'Развернуть все' : 'Свернуть все'}
             </button>
@@ -249,6 +531,43 @@ export default function App() {
             </div>
           </div>
         </div>
+        <div className="view-tabs" role="tablist">
+          <button
+            role="tab"
+            aria-selected={viewMode === 'plan'}
+            className={`view-tab ${viewMode === 'plan' ? 'is-active' : ''}`}
+            onClick={() => setViewMode('plan')}
+          >
+            План
+          </button>
+          <button
+            role="tab"
+            aria-selected={viewMode === 'variance'}
+            className={`view-tab ${viewMode === 'variance' ? 'is-active' : ''}`}
+            onClick={() => setViewMode('variance')}
+            title={`Факт приходит с лагом ${ACTUAL_LAG_DAYS} дн.`}
+          >
+            План vs Факт
+          </button>
+        </div>
+
+        {viewMode === 'variance' ? (
+          <VarianceView
+            beers={beerRows}
+            brandGroups={brandGroups}
+            monthDays={monthDays}
+            collapsedBrands={collapsedBrands}
+            toggleBrand={toggleBrand}
+          />
+        ) : (
+          <>
+        {isApproved && (
+          <div className="approved-banner">
+            План «{selectedChainName}» на {monthLabel} утверждён. Ближайшие {EDITABLE_LEAD_DAYS} дн.
+            заморожены (по сегодня включительно) — редактировать можно только с{' '}
+            <strong>{editableCutoffLabel}</strong> до конца месяца.
+          </div>
+        )}
 
         <div className="table-wrap">
           <div className="table-scroll">
@@ -268,7 +587,11 @@ export default function App() {
                       </th>
                     )
                   })}
+                  <th className="num remaining-col" title="Сколько осталось не отгружено — с сегодняшнего дня до конца месяца">
+                    Осталось
+                  </th>
                   <th className="num total-col">Итого</th>
+                  <th className="actions-col" aria-label="Действия"></th>
                 </tr>
               </thead>
               <tbody>
@@ -276,11 +599,21 @@ export default function App() {
                   const isCollapsed = collapsedBrands.has(group.brand)
                   return (
                     <Fragment key={group.brand}>
-                      <tr
-                        className={`brand-header ${isCollapsed ? 'is-collapsed' : ''}`}
-                        onClick={() => toggleBrand(group.brand)}
-                      >
-                        <td className="sticky-col name-col">
+                      <tr className={`brand-header ${isCollapsed ? 'is-collapsed' : ''}`}>
+                        <td
+                          className="sticky-col name-col brand-toggle"
+                          onClick={() => toggleBrand(group.brand)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              toggleBrand(group.brand)
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={!isCollapsed}
+                          aria-label={`${group.brand}: ${isCollapsed ? 'развернуть' : 'свернуть'} список SKU`}
+                        >
                           <div className="brand-name-cell">
                             <span className="chevron">{isCollapsed ? '›' : '⌄'}</span>
                             <div className="brand-name-stack">
@@ -300,16 +633,30 @@ export default function App() {
                             </td>
                           )
                         })}
+                        <td className="num remaining-col brand-day">
+                          {formatNumber(group.remaining)}
+                        </td>
                         <td className="num total-col brand-day">
                           {formatNumber(group.monthTotal)}
+                        </td>
+                        <td className="actions-col brand-day">
+                          <button
+                            type="button"
+                            className="kebab-btn brand-kebab"
+                            aria-label={`Действия для категории «${group.brand}»`}
+                            title="Действия"
+                            onClick={(e) => openBrandMenuFromKebab(e, group.brand)}
+                          >
+                            ⋯
+                          </button>
                         </td>
                       </tr>
                       {!isCollapsed &&
                         group.skus.map((beer) => (
                           <tr
                             key={beer.id}
-                            className="row-clickable sku-row"
-                            onClick={() => setSelectedId(beer.id)}
+                            className="sku-row"
+                            onContextMenu={(e) => openRowMenu(e, beer.id)}
                           >
                             <td className="sticky-col name-col beer-name">{beer.name}</td>
                             {monthDays.map((day) => {
@@ -323,7 +670,19 @@ export default function App() {
                                 </td>
                               )
                             })}
+                            <td className="num remaining-col">{formatNumber(beer.remaining)}</td>
                             <td className="num total-col strong">{formatNumber(beer.monthTotal)}</td>
+                            <td className="actions-col">
+                              <button
+                                type="button"
+                                className="kebab-btn"
+                                aria-label={`Действия для «${beer.name}»`}
+                                title="Действия"
+                                onClick={(e) => openRowMenuFromKebab(e, beer.id)}
+                              >
+                                ⋯
+                              </button>
+                            </td>
                           </tr>
                         ))}
                     </Fragment>
@@ -342,7 +701,9 @@ export default function App() {
                       </td>
                     )
                   })}
+                  <td className="num remaining-col strong">{formatNumber(totals.remaining)}</td>
                   <td className="num total-col strong">{formatNumber(totals.grand)}</td>
+                  <td className="actions-col"></td>
                 </tr>
               </tbody>
             </table>
@@ -350,8 +711,48 @@ export default function App() {
         </div>
 
         <p className="hint">
-          Кликни по группе — свернуть/развернуть. Клик по позиции — открыть план по дням.
+          Клик по названию бренда — свернуть/развернуть. Меню ⋯ в конце строки или правый клик —
+          «Изменить план».
         </p>
+
+        {rowMenu && (
+          <ContextMenu
+            x={rowMenu.x}
+            y={rowMenu.y}
+            minWidth={180}
+            items={[
+              {
+                label: 'Изменить план',
+                action: () => {
+                  setSelectedId(rowMenu.beerId)
+                  setRowMenu(null)
+                }
+              }
+            ]}
+            onClose={() => setRowMenu(null)}
+          />
+        )}
+
+        {brandMenu && (
+          <ContextMenu
+            x={brandMenu.x}
+            y={brandMenu.y}
+            minWidth={220}
+            items={[
+              {
+                label: 'Изменить план категории',
+                hint: 'Календарь по бренду + добавить отгрузку сразу на все SKU',
+                action: () => {
+                  setSelectedBrand(brandMenu.brand)
+                  setBrandMenu(null)
+                }
+              }
+            ]}
+            onClose={() => setBrandMenu(null)}
+          />
+        )}
+          </>
+        )}
       </div>
     </>
   )
@@ -390,7 +791,7 @@ function buildCalendarWeeks(days) {
   return weeks
 }
 
-function BeerDetails({ beer, onBack, onChange }) {
+function BeerDetails({ beer, onBack, onChange, isApproved = false, editableDays }) {
   const [overrides, setOverrides] = useState(() => loadBeerPlan(beer.id)?.overrides || {})
   const [totalUnits, setTotalUnits] = useState(() => loadBeerPlan(beer.id)?.totalUnits ?? 5000)
   const [pinned, setPinned] = useState(() => loadBeerPlan(beer.id)?.pinned || new Set())
@@ -399,6 +800,11 @@ function BeerDetails({ beer, onBack, onChange }) {
   const [inputPrompt, setInputPrompt] = useState(null)
 
   const monthDays = useMemo(() => getMonthDays(currentMonthKey), [])
+  const editableSet = useMemo(
+    () => editableDays instanceof Set ? editableDays : new Set(editableDays || []),
+    [editableDays]
+  )
+  const isDayEditable = (day) => !isApproved || editableSet.has(day)
 
   useEffect(() => {
     saveBeerPlan(beer.id, { shipmentDays: [], overrides, totalUnits, pinned })
@@ -460,6 +866,7 @@ function BeerDetails({ beer, onBack, onChange }) {
   }
 
   function applyPreset(presetId) {
+    if (isApproved) return
     const preset = DISTRIBUTION_PRESETS.find((p) => p.id === presetId)
     if (!preset) return
     const weights = preset.weightsFor(monthDays)
@@ -478,6 +885,7 @@ function BeerDetails({ beer, onBack, onChange }) {
   // Если ни один незакреплённый день не имеет значения — просто фиксируем новый total,
   // не заполняя дни нулями (пользователь сам выберет пресет).
   function handleTotalChange(newTotal) {
+    if (isApproved) return
     const clean = Math.max(0, Math.round(newTotal))
     setTotalUnits(clean)
 
@@ -510,18 +918,30 @@ function BeerDetails({ beer, onBack, onChange }) {
   // Если будущих дней нет / все закреплены / все нулевые — просто применяем новое значение,
   // total перестанет сходиться и это будет видно в саммари.
   function editDayRolling(day, units) {
-    const clean = Math.max(0, Math.round(units))
+    if (!isDayEditable(day)) return
+    let clean = Math.max(0, Math.round(units))
     const prev = overrides[day] || 0
-    const delta = prev - clean
 
-    const future = monthDays.filter((d) => d > day && !pinned.has(d))
+    const future = monthDays.filter(
+      (d) => d > day && !pinned.has(d) && isDayEditable(d)
+    )
+    const futureSum = future.reduce((s, d) => s + (overrides[d] || 0), 0)
+
+    // В approved: distributedTotal не должен превысить утверждённый totalUnits.
+    // Максимум для дня = prev + всё, что можно "забрать" из будущих editable-дней.
+    // Хочешь поднять план целиком — только через переход в черновик.
+    if (isApproved) {
+      const maxAllowed = prev + futureSum
+      if (clean > maxAllowed) clean = maxAllowed
+    }
+
+    const delta = prev - clean
 
     if (delta === 0 || future.length === 0) {
       setOverrides((prevMap) => ({ ...prevMap, [day]: clean }))
       return
     }
 
-    const futureSum = future.reduce((s, d) => s + (overrides[d] || 0), 0)
     const target = Math.max(0, futureSum + delta)
 
     const weightOf =
@@ -550,6 +970,7 @@ function BeerDetails({ beer, onBack, onChange }) {
   }
 
   function clearDayOverride(day) {
+    if (isApproved) return
     setOverrides((prev) => {
       const next = { ...prev }
       delete next[day]
@@ -558,6 +979,7 @@ function BeerDetails({ beer, onBack, onChange }) {
   }
 
   function setSameUnitsForDays(daysArr, units) {
+    if (isApproved) return
     const clean = Math.max(0, Math.round(units))
     setOverrides((prev) => {
       const next = { ...prev }
@@ -574,6 +996,7 @@ function BeerDetails({ beer, onBack, onChange }) {
   }
 
   function distributeAmongDays(daysArr, total) {
+    if (isApproved) return
     if (daysArr.length === 0) return
     const per = Math.floor(total / daysArr.length)
     const remainder = total - per * daysArr.length
@@ -594,6 +1017,7 @@ function BeerDetails({ beer, onBack, onChange }) {
   function openContextMenu(e, day) {
     e.preventDefault()
     e.stopPropagation()
+    if (!isDayEditable(day)) return
     if (!selection.has(day) && selection.size === 0) {
       setSelection(new Set([day]))
     }
@@ -605,26 +1029,39 @@ function BeerDetails({ beer, onBack, onChange }) {
   }
 
   function buildMenuItems() {
-    const selArr = Array.from(selection).sort()
+    const selArr = Array.from(selection).sort().filter(isDayEditable)
     const n = selArr.length
     const items = []
 
     if (n === 1) {
       const day = selArr[0]
-      const hasFuture = monthDays.some((d) => d > day && !pinned.has(d))
+      const future = monthDays.filter(
+        (d) => d > day && !pinned.has(d) && isDayEditable(d)
+      )
+      const hasFuture = future.length > 0
+      const futureSum = future.reduce((s, d) => s + (overrides[d] || 0), 0)
+      const prev = overrides[day] || 0
+      const maxAllowed = prev + futureSum
+
+      const approvedHint = hasFuture
+        ? 'Максимум ограничен утверждённым total — берётся из следующих editable-дней'
+        : 'Editable-дней впереди нет — увеличить нельзя, поменять план можно только через черновик'
+      const draftHint = hasFuture
+        ? 'Разница будет разложена пропорционально по следующим дням'
+        : 'Дней после этого нет — total может перестать сходиться'
+      const draftPromptHint = hasFuture ? 'Остаток перераспределится на дни после' : undefined
+
+      const hasValue = (overrides[day] || 0) > 0
       items.push({
-        label: 'Штуки для этого дня…',
-        hint: hasFuture
-          ? 'Разница будет разложена пропорционально по следующим дням'
-          : 'Дней после этого нет — total может перестать сходиться',
+        label: hasValue ? 'Изменить количество…' : 'Добавить отгрузку…',
+        hint: isApproved ? approvedHint : draftHint,
         action: () => {
           setContextMenu(null)
           setInputPrompt({
             title: formatDayLabel(day),
-            hint: hasFuture
-              ? 'Остаток перераспределится на дни после'
-              : undefined,
-            defaultValue: overrides[day] || 0,
+            hint: isApproved ? undefined : draftPromptHint,
+            defaultValue: prev,
+            max: isApproved ? maxAllowed : undefined,
             onSubmit: (v) => {
               editDayRolling(day, v)
               setSelection(new Set())
@@ -632,25 +1069,37 @@ function BeerDetails({ beer, onBack, onChange }) {
           })
         }
       })
-      if (overrides[day] != null) {
-        items.push({
-          label: 'Очистить это значение',
-          action: () => {
-            clearDayOverride(day)
-            setSelection(new Set())
-            setContextMenu(null)
-          }
-        })
+      if (overrides[day] != null && overrides[day] > 0) {
+        if (isApproved) {
+          items.push({
+            label: 'Убрать отгрузку',
+            hint: 'Значение обнулится, разница перераспределится на следующие editable-дни',
+            action: () => {
+              editDayRolling(day, 0)
+              setSelection(new Set())
+              setContextMenu(null)
+            }
+          })
+        } else {
+          items.push({
+            label: 'Убрать отгрузку',
+            action: () => {
+              clearDayOverride(day)
+              setSelection(new Set())
+              setContextMenu(null)
+            }
+          })
+        }
       }
     }
 
-    if (n > 1) {
+    if (n > 1 && !isApproved) {
       items.push({
-        label: `Одинаковые штуки на выбранные (${n})…`,
+        label: `Одинаково гл на выбранные (${n})…`,
         action: () => {
           setContextMenu(null)
           setInputPrompt({
-            title: `Одинаковые штуки на ${n} дн.`,
+            title: `Одинаково гл на ${n} дн.`,
             hint: 'Общий план обновится',
             defaultValue: Math.round(totalUnits / n),
             onSubmit: (v) => setSameUnitsForDays(selArr, v)
@@ -658,7 +1107,7 @@ function BeerDetails({ beer, onBack, onChange }) {
         }
       })
       items.push({
-        label: `Разделить общее число на ${n} выбранных…`,
+        label: `Разделить общий план на ${n} выбранных…`,
         action: () => {
           setContextMenu(null)
           setInputPrompt({
@@ -671,7 +1120,7 @@ function BeerDetails({ beer, onBack, onChange }) {
       })
     }
 
-    if (n > 0) {
+    if (n > 0 && !isApproved) {
       const allPinned = selArr.every((d) => pinned.has(d))
       items.push({ divider: true })
       items.push({
@@ -690,79 +1139,74 @@ function BeerDetails({ beer, onBack, onChange }) {
           setContextMenu(null)
         }
       })
-      items.push({
-        label: 'Снять выделение',
-        action: () => {
-          setSelection(new Set())
-          setContextMenu(null)
-        }
-      })
     }
 
-    items.push({ divider: true })
-    items.push({
-      label: `Разделить общий план на все дни (${monthDays.length})…`,
-      action: () => {
-        setContextMenu(null)
-        setInputPrompt({
-          title: `Разделить на ${monthDays.length} дн.`,
-          hint: 'Все дни получат равные доли',
-          defaultValue: totalUnits,
-          onSubmit: (t) => distributeAmongDays(monthDays, t)
-        })
-      }
-    })
-    items.push({
-      label: 'Одинаковые штуки на все дни…',
-      action: () => {
-        setContextMenu(null)
-        setInputPrompt({
-          title: 'Одинаковые штуки на каждый день',
-          hint: 'Общий план обновится',
-          defaultValue: Math.round(totalUnits / monthDays.length),
-          onSubmit: (v) => setSameUnitsForDays(monthDays, v)
-        })
-      }
-    })
-
-    items.push({ divider: true })
-    const setSelPreset = (daysArr) => {
-      setSelection(new Set(daysArr))
-      setContextMenu(null)
-    }
-    items.push({
-      label: 'Выделить…',
-      submenu: [
-        { label: 'Все будни', action: () => setSelPreset(presetDaySets.workdays) },
-        { label: 'Все выходные', action: () => setSelPreset(presetDaySets.weekends) },
-        { label: 'Все чётные', action: () => setSelPreset(presetDaySets.even) },
-        { label: 'Все нечётные', action: () => setSelPreset(presetDaySets.odd) },
-        { label: 'Все дни', action: () => setSelPreset(presetDaySets.all) }
-      ]
-    })
-
-    if (pinned.size > 0) {
+    if (!isApproved) {
       items.push({ divider: true })
       items.push({
-        label: `Открепить все (${pinned.size})`,
+        label: `Разделить общий план на все дни (${monthDays.length})…`,
         action: () => {
-          clearAllPinned()
           setContextMenu(null)
+          setInputPrompt({
+            title: `Разделить на ${monthDays.length} дн.`,
+            hint: 'Все дни получат равные доли',
+            defaultValue: totalUnits,
+            onSubmit: (t) => distributeAmongDays(monthDays, t)
+          })
         }
       })
-    }
-
-    if (Object.keys(overrides).length > 0 || pinned.size > 0) {
-      items.push({ divider: true })
       items.push({
-        label: 'Очистить весь план',
-        danger: true,
+        label: 'Одинаково гл на все дни…',
         action: () => {
-          setOverrides({})
-          setPinned(new Set())
           setContextMenu(null)
+          setInputPrompt({
+            title: 'Одинаково гл на каждый день',
+            hint: 'Общий план обновится',
+            defaultValue: Math.round(totalUnits / monthDays.length),
+            onSubmit: (v) => setSameUnitsForDays(monthDays, v)
+          })
         }
       })
+
+      items.push({ divider: true })
+      const setSelPreset = (daysArr) => {
+        setSelection(new Set(daysArr))
+        setContextMenu(null)
+      }
+      items.push({
+        label: 'Выделить…',
+        submenu: [
+          { label: 'Все будни', action: () => setSelPreset(presetDaySets.workdays) },
+          { label: 'Все выходные', action: () => setSelPreset(presetDaySets.weekends) },
+          { label: 'Все чётные', action: () => setSelPreset(presetDaySets.even) },
+          { label: 'Все нечётные', action: () => setSelPreset(presetDaySets.odd) },
+          { label: 'Все дни', action: () => setSelPreset(presetDaySets.all) }
+        ]
+      })
+
+      if (pinned.size > 0) {
+        items.push({ divider: true })
+        items.push({
+          label: `Открепить все (${pinned.size})`,
+          action: () => {
+            clearAllPinned()
+            setContextMenu(null)
+          }
+        })
+      }
+
+      if (Object.keys(overrides).length > 0 || pinned.size > 0) {
+        items.push({ divider: true })
+        items.push({
+          label: 'Очистить весь план',
+          danger: true,
+          action: () => {
+            setOverrides({})
+            setPinned(new Set())
+            setContextMenu(null)
+          }
+        })
+      }
     }
 
     return items
@@ -809,6 +1253,8 @@ function BeerDetails({ beer, onBack, onChange }) {
           onCellContextMenu={openContextMenu}
           onApplyPreset={applyPreset}
           pinned={pinned}
+          isApproved={isApproved}
+          isDayEditable={isDayEditable}
         />
 
         {contextMenu && (
@@ -825,6 +1271,7 @@ function BeerDetails({ beer, onBack, onChange }) {
             title={inputPrompt.title}
             hint={inputPrompt.hint}
             defaultValue={inputPrompt.defaultValue}
+            max={inputPrompt.max}
             onSubmit={(n) => {
               inputPrompt.onSubmit(n)
               setInputPrompt(null)
@@ -845,6 +1292,674 @@ function formatDayLabel(day) {
   })
 }
 
+function BrandDetails({
+  brand,
+  beers,
+  onBack,
+  onAddShipment,
+  onAddShipmentOnDay,
+  isApproved = false,
+  editableDays
+}) {
+  const monthDays = useMemo(() => getMonthDays(currentMonthKey), [])
+  const weeks = useMemo(() => buildCalendarWeeks(monthDays), [monthDays])
+  const monthLabel = useMemo(() => getMonthLabel(currentMonthKey), [])
+  const editableSet = useMemo(
+    () => (editableDays instanceof Set ? editableDays : new Set(editableDays || [])),
+    [editableDays]
+  )
+  const isDayEditable = (day) => !isApproved || editableSet.has(day)
+
+  const [selectedDay, setSelectedDay] = useState(null)
+  const [inputPrompt, setInputPrompt] = useState(null)
+
+  const brandByDay = useMemo(() => {
+    const map = {}
+    for (const day of monthDays) {
+      map[day] = beers.reduce((s, b) => s + (b.salesByDay[day] || 0), 0)
+    }
+    return map
+  }, [beers, monthDays])
+
+  const monthTotal = useMemo(
+    () => Object.values(brandByDay).reduce((s, v) => s + v, 0),
+    [brandByDay]
+  )
+
+  const remainingTotal = useMemo(
+    () =>
+      monthDays
+        .filter((d) => d >= todayStr)
+        .reduce((s, d) => s + brandByDay[d], 0),
+    [brandByDay, monthDays]
+  )
+
+  const maxDay = useMemo(
+    () => monthDays.reduce((m, d) => Math.max(m, brandByDay[d] || 0), 0),
+    [brandByDay, monthDays]
+  )
+
+  const skuBreakdown = useMemo(() => {
+    if (!selectedDay) return []
+    return beers
+      .map((b) => ({ id: b.id, name: b.name, val: b.salesByDay[selectedDay] || 0 }))
+      .sort((a, b) => b.val - a.val)
+  }, [beers, selectedDay])
+
+  const targetDaysCount = useMemo(
+    () =>
+      monthDays.filter((d) => d >= todayStr && isDayEditable(d)).length,
+    [monthDays, isApproved, editableSet] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  function openAddShipment() {
+    if (targetDaysCount === 0) {
+      setInputPrompt({
+        title: 'Некуда добавлять',
+        hint: isApproved
+          ? 'В утверждённом плане не осталось editable-дней. Верни план в черновик, чтобы добавить отгрузку.'
+          : 'В месяце не осталось будущих дней.',
+        defaultValue: 0,
+        onSubmit: () => {}
+      })
+      return
+    }
+    setInputPrompt({
+      title: `Добавить отгрузку на «${brand}»`,
+      hint: `Разложится по ${targetDaysCount} ${isApproved ? 'editable-дням' : 'оставшимся дням'} пропорционально текущим продажам бренда; внутри дня — по долям SKU`,
+      defaultValue: 0,
+      onSubmit: (v) => {
+        if (v > 0) onAddShipment(v)
+      }
+    })
+  }
+
+  return (
+    <>
+      <TopBar />
+      <div className="page">
+        <button className="back" onClick={onBack}>
+          ← Назад к списку
+        </button>
+        <div className="detail-header">
+          <div>
+            <p className="brand-crumb">Категория</p>
+            <h1>{brand}</h1>
+          </div>
+        </div>
+
+        <div className="stat-row">
+          <div className="stat">
+            <div className="stat-label">План на {monthLabel}</div>
+            <div className="stat-value">{formatNumber(monthTotal)}</div>
+          </div>
+          <div className="stat">
+            <div className="stat-label">Осталось с сегодня</div>
+            <div className="stat-value">{formatNumber(remainingTotal)}</div>
+          </div>
+          <div className="stat">
+            <div className="stat-label">SKU в категории</div>
+            <div className="stat-value">{beers.length}</div>
+          </div>
+        </div>
+
+        <div className="ship-panel">
+          <div className="ship-toolbar">
+            <span className="ship-month">{monthLabel}</span>
+            <div className="brand-actions">
+              <button
+                className="btn btn-primary"
+                onClick={openAddShipment}
+                title={
+                  isApproved
+                    ? 'Разложится только по editable-дням'
+                    : 'Разложится по всем дням месяца'
+                }
+              >
+                + Добавить отгрузку на категорию
+              </button>
+            </div>
+          </div>
+
+          {isApproved && (
+            <div className="approved-inline-banner">
+              План утверждён. Отгрузка ляжет только на editable-дни (заштрихованные —
+              заблокированы).
+            </div>
+          )}
+
+          <div className="ship-hint-row">
+            Клик по дню — раскрыть разбивку по SKU. В ячейке — сумма по категории и число SKU
+            с продажей в этот день.
+          </div>
+
+          <div className="ship-calendar">
+            <div className="calendar-head">
+              {WEEK_DOW_LABELS.map((d) => (
+                <div key={d} className="calendar-head-cell">
+                  {d}
+                </div>
+              ))}
+            </div>
+            <div className="calendar-body">
+              {weeks.map((week, wi) => (
+                <div key={wi} className="calendar-row">
+                  {week.map((day, di) => {
+                    if (!day) return <div key={di} className="ship-cell empty" />
+                    const info = dayInfo(day)
+                    const units = brandByDay[day] || 0
+                    const activeSkus = beers.reduce(
+                      (s, b) => s + ((b.salesByDay[day] || 0) > 0 ? 1 : 0),
+                      0
+                    )
+                    const isLocked = !isDayEditable(day)
+                    const isSelected = selectedDay === day
+                    const intensity = maxDay > 0 ? units / maxDay : 0
+                    return (
+                      <button
+                        key={day}
+                        className={`ship-cell brand-cell ${isSelected ? 'is-selected' : ''} ${info.isToday ? 'today' : ''} ${info.isPast ? 'past' : ''} ${info.isWeekend ? 'weekend' : ''} ${units > 0 ? 'has-override' : ''} ${isLocked ? 'is-locked' : ''}`}
+                        style={{ '--intensity': intensity }}
+                        onClick={() => setSelectedDay(day === selectedDay ? null : day)}
+                        onDragStart={(e) => e.preventDefault()}
+                        aria-pressed={isSelected}
+                        title={
+                          isLocked
+                            ? 'План утверждён — этот день заблокирован для новых отгрузок'
+                            : undefined
+                        }
+                      >
+                        <span className="ship-cell-day">{info.num}</span>
+                        {info.isToday && <span className="ship-cell-today-chip">сегодня</span>}
+                        {isLocked && (
+                          <span className="ship-cell-lock" aria-hidden="true">🔒</span>
+                        )}
+                        {units > 0 && (
+                          <span className="ship-cell-units">{formatNumber(units)}</span>
+                        )}
+                        {activeSkus > 0 && (
+                          <span className="ship-cell-pct brand-sku-count">
+                            {activeSkus} SKU
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {selectedDay && (
+            <div className="brand-day-panel">
+              <div className="brand-day-panel-head">
+                <div>
+                  <div className="brand-day-panel-title">{formatDayLabel(selectedDay)}</div>
+                  <div className="brand-day-panel-sub">
+                    Итого по категории: <strong>{formatNumber(brandByDay[selectedDay] || 0)}</strong> гл
+                    · {skuBreakdown.filter((r) => r.val > 0).length} SKU с продажей
+                  </div>
+                </div>
+                <div className="brand-day-panel-actions">
+                  {isDayEditable(selectedDay) && selectedDay >= todayStr && (
+                    <button
+                      className="btn btn-primary brand-day-add"
+                      onClick={() =>
+                        setInputPrompt({
+                          title: `Добавить отгрузку на ${formatDayLabel(selectedDay)}`,
+                          hint: `Разложится только на этот день между ${beers.length} SKU пропорционально их текущим долям в этот день`,
+                          defaultValue: 0,
+                          onSubmit: (v) => {
+                            if (v > 0) onAddShipmentOnDay?.(selectedDay, v)
+                          }
+                        })
+                      }
+                    >
+                      + Отгрузка в этот день
+                    </button>
+                  )}
+                  <button
+                    className="btn-ghost brand-day-panel-close"
+                    onClick={() => setSelectedDay(null)}
+                  >
+                    Закрыть
+                  </button>
+                </div>
+              </div>
+              <table className="brand-day-table">
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th className="num">гл</th>
+                    <th className="num">доля</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {skuBreakdown.map((row) => {
+                    const share =
+                      brandByDay[selectedDay] > 0
+                        ? (row.val / brandByDay[selectedDay]) * 100
+                        : 0
+                    return (
+                      <tr key={row.id} className={row.val === 0 ? 'is-zero' : ''}>
+                        <td>{row.name}</td>
+                        <td className="num">{formatNumber(row.val)}</td>
+                        <td className="num">{share.toFixed(1)}%</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {inputPrompt && (
+          <InputPrompt
+            title={inputPrompt.title}
+            hint={inputPrompt.hint}
+            defaultValue={inputPrompt.defaultValue}
+            onSubmit={(n) => {
+              inputPrompt.onSubmit(n)
+              setInputPrompt(null)
+            }}
+            onCancel={() => setInputPrompt(null)}
+          />
+        )}
+      </div>
+    </>
+  )
+}
+
+function VarianceView({ beers, brandGroups, monthDays, collapsedBrands, toggleBrand }) {
+  const [metric, setMetric] = useState('delta') // delta | delta_pct | actual | plan
+  const actualCutoff = useMemo(() => getActualCutoffDate(), [])
+  const monthLabel = useMemo(() => getMonthLabel(currentMonthKey), [])
+  const actualCutoffLabel = useMemo(
+    () =>
+      new Date(actualCutoff).toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'long'
+      }),
+    [actualCutoff]
+  )
+
+  // Только дни этого месяца, по которым уже пришёл факт.
+  const reportedDays = useMemo(
+    () => monthDays.filter((d) => d <= actualCutoff),
+    [monthDays, actualCutoff]
+  )
+
+  const skuRows = useMemo(
+    () =>
+      beers.map((beer) => {
+        let planReported = 0
+        let actualReported = 0
+        for (const day of reportedDays) {
+          planReported += beer.salesByDay[day] || 0
+          actualReported += beer.actualByDay?.[day] ?? 0
+        }
+        const planMonth = monthDays.reduce((s, d) => s + (beer.salesByDay[d] || 0), 0)
+        const deltaCum = actualReported - planReported
+        const projectedPct =
+          planReported > 0 ? (actualReported / planReported) * 100 : null
+        return {
+          ...beer,
+          planMonth,
+          planReported,
+          actualReported,
+          deltaCum,
+          projectedPct
+        }
+      }),
+    [beers, reportedDays, monthDays]
+  )
+
+  const brandRows = useMemo(
+    () =>
+      brandGroups.map((group) => {
+        const skus = skuRows.filter((s) => s.brand === group.brand)
+        const planMonth = skus.reduce((s, x) => s + x.planMonth, 0)
+        const planReported = skus.reduce((s, x) => s + x.planReported, 0)
+        const actualReported = skus.reduce((s, x) => s + x.actualReported, 0)
+        const deltaCum = actualReported - planReported
+        const projectedPct =
+          planReported > 0 ? (actualReported / planReported) * 100 : null
+
+        const planByDay = {}
+        const actualByDay = {}
+        for (const day of monthDays) {
+          planByDay[day] = skus.reduce((s, x) => s + (x.salesByDay[day] || 0), 0)
+          actualByDay[day] = skus.reduce(
+            (s, x) => s + (x.actualByDay?.[day] ?? 0),
+            0
+          )
+        }
+        return {
+          brand: group.brand,
+          skus,
+          planMonth,
+          planReported,
+          actualReported,
+          deltaCum,
+          projectedPct,
+          planByDay,
+          actualByDay
+        }
+      }),
+    [brandGroups, skuRows, monthDays]
+  )
+
+  const kpi = useMemo(() => {
+    const planMonth = brandRows.reduce((s, x) => s + x.planMonth, 0)
+    const planReported = brandRows.reduce((s, x) => s + x.planReported, 0)
+    const actualReported = brandRows.reduce((s, x) => s + x.actualReported, 0)
+    const delta = actualReported - planReported
+    const deltaPct = planReported > 0 ? (delta / planReported) * 100 : 0
+    const projectedPct = planReported > 0 ? (actualReported / planReported) * 100 : null
+    // Отставание в днях: |delta| / средний план в день (по отчётным дням)
+    const avgDayPlan = reportedDays.length > 0 ? planReported / reportedDays.length : 0
+    const lagDays = avgDayPlan > 0 ? delta / avgDayPlan : 0
+    return { planMonth, planReported, actualReported, delta, deltaPct, projectedPct, lagDays }
+  }, [brandRows, reportedDays])
+
+  function colorForDelta(plan, delta) {
+    if (plan <= 0) return ''
+    const pct = (delta / plan) * 100
+    if (pct <= -15) return 'var-red-strong'
+    if (pct <= -5) return 'var-red'
+    if (pct >= 15) return 'var-green-strong'
+    if (pct >= 5) return 'var-green'
+    return ''
+  }
+
+  function renderCellContent(plan, actual, day) {
+    if (day > actualCutoff) {
+      if (day > todayStr) {
+        // Будущий день: факта не будет ещё долго.
+        if (metric === 'plan') return { node: formatNumber(plan), cls: '' }
+        if (metric === 'combined') {
+          return {
+            node: (
+              <div className="var-cell-combined">
+                <span className="plan">{formatNumber(plan)}</span>
+                <span className="actual is-empty">—</span>
+              </div>
+            ),
+            cls: ''
+          }
+        }
+        return { node: '—', cls: 'var-empty' }
+      }
+      // Дни в окне лага: план есть, факт ещё придёт.
+      if (metric === 'combined') {
+        return {
+          node: (
+            <div className="var-cell-combined">
+              <span className="plan">{formatNumber(plan)}</span>
+              <span className="actual is-waiting">⏱</span>
+            </div>
+          ),
+          cls: 'var-waiting',
+          title: `Ждём факт (лаг ${ACTUAL_LAG_DAYS} дн.)`
+        }
+      }
+      return {
+        node: '⏱',
+        cls: 'var-waiting',
+        title: `Ждём факт (лаг ${ACTUAL_LAG_DAYS} дн.)`
+      }
+    }
+    const delta = actual - plan
+    const deltaPct = plan > 0 ? (delta / plan) * 100 : 0
+
+    if (metric === 'combined') {
+      const cls = colorForDelta(plan, delta)
+      return {
+        node: (
+          <div className="var-cell-combined">
+            <span className="plan">{formatNumber(plan)}</span>
+            <span className="actual">{formatNumber(actual)}</span>
+          </div>
+        ),
+        cls,
+        title:
+          plan > 0
+            ? `План ${formatNumber(plan)} · Факт ${formatNumber(actual)} · Δ ${(delta >= 0 ? '+' : '') + formatNumber(delta)} (${(deltaPct >= 0 ? '+' : '') + deltaPct.toFixed(1)}%)`
+            : `План 0 · Факт ${formatNumber(actual)}`
+      }
+    }
+
+    let value = ''
+    let cls = ''
+    if (metric === 'delta') {
+      value = delta === 0 ? '0' : (delta > 0 ? '+' : '') + formatNumber(delta)
+    } else if (metric === 'delta_pct') {
+      if (plan === 0) value = actual > 0 ? '+∞' : '0%'
+      else value = (delta >= 0 ? '+' : '') + deltaPct.toFixed(0) + '%'
+    } else if (metric === 'actual') {
+      value = formatNumber(actual)
+    } else {
+      value = formatNumber(plan)
+    }
+    if (metric === 'delta' || metric === 'delta_pct') {
+      cls = colorForDelta(plan, delta)
+    }
+    return { node: value, cls }
+  }
+
+  const METRICS = [
+    { id: 'combined', label: 'План + Факт' },
+    { id: 'delta', label: 'Δ гл' },
+    { id: 'delta_pct', label: 'Δ %' },
+    { id: 'actual', label: 'Факт' },
+    { id: 'plan', label: 'План' }
+  ]
+
+  const deltaSign = kpi.delta > 0 ? '+' : ''
+  const kpiVariantClass =
+    kpi.delta < 0 ? 'is-under' : kpi.delta > 0 ? 'is-over' : ''
+
+  return (
+    <>
+      <div className="kpi-strip">
+        <div className="kpi-item">
+          <div className="kpi-label">План на {monthLabel}</div>
+          <div className="kpi-value">{formatNumber(kpi.planMonth)}<span className="kpi-unit"> гл</span></div>
+        </div>
+        <div className="kpi-item">
+          <div className="kpi-label">Факт c начала месяца (по {actualCutoffLabel})</div>
+          <div className="kpi-value">{formatNumber(kpi.actualReported)}<span className="kpi-unit"> гл</span></div>
+          <div className="kpi-sub">ожидалось {formatNumber(kpi.planReported)} гл</div>
+        </div>
+        <div className={`kpi-item ${kpiVariantClass}`}>
+          <div className="kpi-label">
+            {kpi.delta < 0 ? 'Отставание' : kpi.delta > 0 ? 'Опережение' : 'В плане'}
+          </div>
+          <div className="kpi-value">
+            {deltaSign}{formatNumber(kpi.delta)}<span className="kpi-unit"> гл</span>
+          </div>
+          <div className="kpi-sub">
+            {deltaSign}{kpi.deltaPct.toFixed(1)}%{' '}
+            {Math.abs(kpi.lagDays) >= 0.1 && (
+              <>· ≈ {deltaSign}{kpi.lagDays.toFixed(1)} дн.</>
+            )}
+          </div>
+        </div>
+        <div className="kpi-item">
+          <div className="kpi-label">Прогноз выполнения</div>
+          <div className="kpi-value">
+            {kpi.projectedPct == null ? '—' : `${kpi.projectedPct.toFixed(0)}%`}
+          </div>
+          <div className="kpi-sub">если тренд сохранится</div>
+        </div>
+      </div>
+
+      <div className="variance-toolbar">
+        <div className="metric-toggle" role="tablist">
+          {METRICS.map((m) => (
+            <button
+              key={m.id}
+              className={`metric-chip ${metric === m.id ? 'is-active' : ''}`}
+              onClick={() => setMetric(m.id)}
+              role="tab"
+              aria-selected={metric === m.id}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div className="variance-legend">
+          <span className="legend-swatch var-red-strong" /> ≤ −15%
+          <span className="legend-swatch var-red" /> −5..−15%
+          <span className="legend-swatch var-green" /> +5..+15%
+          <span className="legend-swatch var-green-strong" /> ≥ +15%
+          <span className="legend-swatch var-waiting" /> ждём факт
+        </div>
+      </div>
+
+      <div className="table-wrap">
+        <div className="table-scroll">
+          <table className="beer-table days-table variance-table">
+            <thead>
+              <tr>
+                <th className="sticky-col name-col">Наименование</th>
+                {monthDays.map((day) => {
+                  const h = dayInfo(day)
+                  const isWaiting = day > actualCutoff && day <= todayStr
+                  return (
+                    <th
+                      key={day}
+                      className={`num day-col ${h.isWeekend ? 'weekend' : ''} ${h.isPast ? 'past' : ''} ${h.isToday ? 'today' : ''} ${isWaiting ? 'var-waiting-col' : ''}`}
+                    >
+                      <div className="day-num">{h.num}</div>
+                      <div className="day-dow">{h.dow}</div>
+                    </th>
+                  )
+                })}
+                <th className="num remaining-col" title="Накопленная дельта (факт − план) с начала месяца">
+                  Δ с начала
+                </th>
+                <th className="num total-col" title="Прогноз выполнения плана, если тренд сохранится">
+                  Прогноз %
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {brandRows.map((group) => {
+                const isCollapsed = collapsedBrands.has(group.brand)
+                const groupDeltaSign = group.deltaCum > 0 ? '+' : ''
+                const groupDeltaCls =
+                  group.deltaCum < 0 ? 'var-red' : group.deltaCum > 0 ? 'var-green' : ''
+                const projCls =
+                  group.projectedPct == null
+                    ? ''
+                    : group.projectedPct < 95
+                    ? 'var-red'
+                    : group.projectedPct > 105
+                    ? 'var-green'
+                    : ''
+                return (
+                  <Fragment key={group.brand}>
+                    <tr className={`brand-header ${isCollapsed ? 'is-collapsed' : ''}`}>
+                      <td
+                        className="sticky-col name-col brand-toggle"
+                        onClick={() => toggleBrand(group.brand)}
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={!isCollapsed}
+                      >
+                        <div className="brand-name-cell">
+                          <span className="chevron">{isCollapsed ? '›' : '⌄'}</span>
+                          <div className="brand-name-stack">
+                            <span className="brand-title">{group.brand}</span>
+                            <span className="brand-meta">{group.skus.length} SKU</span>
+                          </div>
+                        </div>
+                      </td>
+                      {monthDays.map((day) => {
+                        const h = dayInfo(day)
+                        const c = renderCellContent(
+                          group.planByDay[day] || 0,
+                          group.actualByDay[day] || 0,
+                          day
+                        )
+                        return (
+                          <td
+                            key={day}
+                            className={`num day-col brand-day ${h.isWeekend ? 'weekend' : ''} ${h.isPast ? 'past' : ''} ${h.isToday ? 'today' : ''} ${c.cls}`}
+                            title={c.title}
+                          >
+                            {c.node}
+                          </td>
+                        )
+                      })}
+                      <td className={`num remaining-col brand-day ${groupDeltaCls}`}>
+                        {groupDeltaSign}{formatNumber(group.deltaCum)}
+                      </td>
+                      <td className={`num total-col brand-day ${projCls}`}>
+                        {group.projectedPct == null ? '—' : `${group.projectedPct.toFixed(0)}%`}
+                      </td>
+                    </tr>
+                    {!isCollapsed &&
+                      group.skus.map((beer) => {
+                        const skuDeltaSign = beer.deltaCum > 0 ? '+' : ''
+                        const skuDeltaCls =
+                          beer.deltaCum < 0 ? 'var-red' : beer.deltaCum > 0 ? 'var-green' : ''
+                        const skuProjCls =
+                          beer.projectedPct == null
+                            ? ''
+                            : beer.projectedPct < 95
+                            ? 'var-red'
+                            : beer.projectedPct > 105
+                            ? 'var-green'
+                            : ''
+                        return (
+                          <tr key={beer.id} className="sku-row">
+                            <td className="sticky-col name-col beer-name">{beer.name}</td>
+                            {monthDays.map((day) => {
+                              const h = dayInfo(day)
+                              const c = renderCellContent(
+                                beer.salesByDay[day] || 0,
+                                beer.actualByDay?.[day] ?? 0,
+                                day
+                              )
+                              return (
+                                <td
+                                  key={day}
+                                  className={`num day-col ${h.isWeekend ? 'weekend' : ''} ${h.isPast ? 'past' : ''} ${h.isToday ? 'today' : ''} ${c.cls}`}
+                                  title={c.title}
+                                >
+                                  {c.node}
+                                </td>
+                              )
+                            })}
+                            <td className={`num remaining-col ${skuDeltaCls}`}>
+                              {skuDeltaSign}{formatNumber(beer.deltaCum)}
+                            </td>
+                            <td className={`num total-col strong ${skuProjCls}`}>
+                              {beer.projectedPct == null ? '—' : `${beer.projectedPct.toFixed(0)}%`}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p className="hint">
+        Метрика в ячейке — по переключателю сверху. Цвет: красный — недо-, зелёный — переотгрузка
+        (порог ±5%, «сильный» — ±15%). Заштрихованный — ждём факт (лаг {ACTUAL_LAG_DAYS} дн.,
+        последняя дата — <strong>{actualCutoffLabel}</strong>).
+      </p>
+    </>
+  )
+}
+
 function PlanCalendar({
   monthDays,
   selection,
@@ -856,7 +1971,9 @@ function PlanCalendar({
   distributedTotal,
   onCellContextMenu,
   onApplyPreset,
-  pinned
+  pinned,
+  isApproved = false,
+  isDayEditable = () => true
 }) {
   const weeks = useMemo(() => buildCalendarWeeks(monthDays), [monthDays])
   const monthLabel = useMemo(() => getMonthLabel(currentMonthKey), [])
@@ -970,10 +2087,14 @@ function PlanCalendar({
     <div className="ship-panel">
       <div className="ship-toolbar">
         <span className="ship-month">{monthLabel}</span>
-        <div className="ship-total-input">
+        <div className={`ship-total-input ${isApproved ? 'is-disabled' : ''}`}>
           <span className="ship-total-input-prefix">План</span>
-          <TotalInput value={totalUnits} onCommit={onTotalChange} />
-          <span className="ship-total-suffix">шт</span>
+          <TotalInput
+            value={totalUnits}
+            onCommit={onTotalChange}
+            disabled={isApproved}
+          />
+          <span className="ship-total-suffix">гл</span>
         </div>
         <div className="ship-summary">
           <span className={`ship-summary-num ${isOver ? 'is-over' : ''}`}>
@@ -982,6 +2103,13 @@ function PlanCalendar({
           <span>задано из {formatNumber(totalUnits)}</span>
         </div>
       </div>
+
+      {isApproved && (
+        <div className="approved-inline-banner">
+          План утверждён. Правки только в рамках текущего total — разница берётся из следующих
+          editable-дней. Поднять план в целом можно только через переход в черновик.
+        </div>
+      )}
 
       <div className="ship-progress">
         <div
@@ -999,7 +2127,8 @@ function PlanCalendar({
             key={preset.id}
             className="chip preset-chip"
             onClick={() => onApplyPreset?.(preset.id)}
-            title={preset.hint}
+            title={isApproved ? 'План утверждён — пресеты заблокированы' : preset.hint}
+            disabled={isApproved}
           >
             {preset.label}
           </button>
@@ -1029,22 +2158,31 @@ function PlanCalendar({
                 if (!day) return <div key={di} className="ship-cell empty" />
                 const info = dayInfo(day)
                 const isSelected = selection.has(day)
-                const hasOverride = overrides[day] != null
-                const isPinned = pinned?.has(day)
                 const units = overrides[day] || 0
+                const hasOverride = overrides[day] != null && units > 0
+                const isPinned = pinned?.has(day)
+                const isLocked = isApproved && !isDayEditable(day)
                 const pct = percents[day] || 0
                 return (
                   <button
                     key={day}
-                    data-day={day}
-                    className={`ship-cell ${isSelected ? 'is-selected' : ''} ${info.isToday ? 'today' : ''} ${info.isPast ? 'past' : ''} ${info.isWeekend ? 'weekend' : ''} ${hasOverride ? 'has-override' : ''} ${isPinned ? 'is-pinned' : ''}`}
+                    data-day={isLocked ? undefined : day}
+                    className={`ship-cell ${isSelected ? 'is-selected' : ''} ${info.isToday ? 'today' : ''} ${info.isPast ? 'past' : ''} ${info.isWeekend ? 'weekend' : ''} ${hasOverride ? 'has-override' : ''} ${isPinned ? 'is-pinned' : ''} ${isLocked ? 'is-locked' : ''}`}
                     onContextMenu={(e) => onCellContextMenu(e, day)}
                     onDragStart={(e) => e.preventDefault()}
                     aria-pressed={isSelected}
-                    title={isPinned ? 'Закреплено — пресеты не будут менять этот день' : undefined}
+                    aria-disabled={isLocked || undefined}
+                    title={
+                      isLocked
+                        ? 'План утверждён — этот день заблокирован'
+                        : isPinned
+                        ? 'Закреплено — пресеты не будут менять этот день'
+                        : undefined
+                    }
                   >
                     <span className="ship-cell-day">{info.num}</span>
                     {info.isToday && <span className="ship-cell-today-chip">сегодня</span>}
+                    {isLocked && <span className="ship-cell-lock" aria-hidden="true">🔒</span>}
                     {isPinned && <span className="ship-cell-pin" aria-hidden="true" />}
                     {hasOverride && (
                       <>
@@ -1171,7 +2309,7 @@ function ShipmentCalendar({
             value={totalUnits}
             onChange={(e) => onTotalChange(Math.max(0, Number(e.target.value) || 0))}
           />
-          <span className="ship-total-suffix">шт</span>
+          <span className="ship-total-suffix">гл</span>
         </div>
         <div className="ship-summary">
           <span className={`ship-summary-num ${distributedTotal > totalUnits ? 'is-over' : ''}`}>
@@ -1211,7 +2349,7 @@ function ShipmentCalendar({
           </button>
         </div>
         <div className="ship-hint-row">
-          Клик/перетаскивание — выделение · правый клик — меню действий · пункты меню назначают ship-дни и штуки на выделенные
+          Клик/перетаскивание — выделение · правый клик — меню действий · пункты меню назначают ship-дни и гл на выделенные
         </div>
       </div>
 
@@ -1266,7 +2404,7 @@ function ShipmentCalendar({
 // (blur или Enter), а не на каждое нажатие клавиши. Иначе промежуточное
 // значение 0 (при select-all → набор нового числа) обнулило бы форму
 // распределения и незакреплённые дни не смогли бы восстановиться.
-function TotalInput({ value, onCommit }) {
+function TotalInput({ value, onCommit, disabled = false }) {
   const [text, setText] = useState(String(value))
   const [focused, setFocused] = useState(false)
 
@@ -1285,6 +2423,8 @@ function TotalInput({ value, onCommit }) {
       type="number"
       min="0"
       value={text}
+      disabled={disabled}
+      title={disabled ? 'План утверждён — общий план заблокирован' : undefined}
       onFocus={() => setFocused(true)}
       onChange={(e) => setText(e.target.value)}
       onBlur={() => {
@@ -1302,7 +2442,7 @@ function TotalInput({ value, onCommit }) {
   )
 }
 
-function ContextMenu({ x, y, items, onClose }) {
+function ContextMenu({ x, y, items, onClose, minWidth }) {
   const [openSubmenu, setOpenSubmenu] = useState(null)
   const closeTimerRef = useRef(null)
 
@@ -1337,7 +2477,11 @@ function ContextMenu({ x, y, items, onClose }) {
   }
 
   return (
-    <div className="context-menu" style={{ left: x, top: y }} onContextMenu={(e) => e.preventDefault()}>
+    <div
+      className="context-menu"
+      style={{ left: x, top: y, ...(minWidth != null ? { minWidth } : null) }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {items.map((item, i) => {
         if (item.divider) return <div key={i} className="context-menu-divider" />
         if (item.submenu) {
@@ -1394,24 +2538,47 @@ function ContextMenu({ x, y, items, onClose }) {
   )
 }
 
-function InputPrompt({ title, hint, defaultValue, onSubmit, onCancel }) {
+function InputPrompt({ title, hint, defaultValue, onSubmit, onCancel, max }) {
   const [value, setValue] = useState(String(defaultValue))
-  function submit() {
-    const n = Math.max(0, parseInt(value, 10) || 0)
-    onSubmit(n)
+  const parsed = Math.max(0, parseInt(value, 10) || 0)
+  const hasMax = typeof max === 'number' && Number.isFinite(max)
+  const overMax = hasMax && parsed > max
+  const canSubmit = !overMax
+
+  function handleChange(next) {
+    if (hasMax) {
+      const n = parseInt(next, 10)
+      if (Number.isFinite(n) && n > max) {
+        setValue(String(max))
+        return
+      }
+    }
+    setValue(next)
   }
+
+  function submit() {
+    if (!canSubmit) return
+    onSubmit(parsed)
+  }
+
   return (
     <div className="dialog-overlay" onClick={onCancel}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-title">{title}</div>
         {hint && <div className="dialog-hint">{hint}</div>}
+        {hasMax && (
+          <div className={`dialog-hint dialog-hint-accent ${overMax ? 'is-error' : ''}`}>
+            Максимум: {formatNumber(max)} гл
+          </div>
+        )}
         <input
-          className="dialog-input"
+          className={`dialog-input ${overMax ? 'is-error' : ''}`}
           type="number"
           min="0"
+          max={hasMax ? max : undefined}
           value={value}
           autoFocus
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') submit()
             if (e.key === 'Escape') onCancel()
@@ -1421,11 +2588,10 @@ function InputPrompt({ title, hint, defaultValue, onSubmit, onCancel }) {
           <button className="dialog-cancel" onClick={onCancel}>
             Отмена
           </button>
-          <button className="btn btn-primary" onClick={submit}>
+          <button className="btn btn-primary" onClick={submit} disabled={!canSubmit}>
             Применить
           </button>
         </div>
-
       </div>
     </div>
   )
