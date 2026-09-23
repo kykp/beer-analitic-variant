@@ -1,3 +1,11 @@
+export const chains = [
+  { id: 'lenta', name: 'Лента' },
+  { id: 'pyaterochka', name: 'Пятёрочка' },
+  { id: 'perekrestok', name: 'Перекрёсток' }
+]
+
+export const defaultChainId = chains[0].id
+
 const beers = [
   { id: 1, brand: 'Жигули Барное', name: 'Пиво Жигули Барное 0,45 бан' },
   { id: 2, brand: 'Жигули Барное', name: 'Пиво Жигули Барное 0,45 бут' },
@@ -95,6 +103,33 @@ export function shiftMonth(monthKey, delta) {
 export const todayStr = toISO(TODAY)
 export const currentMonthKey = getMonthKey(TODAY)
 
+// В approved-режиме план "заморожен" на ближайшие EDITABLE_LEAD_DAYS дней (сегодня и
+// следующие 2) — на них уже нельзя оперативно влиять (отгрузки/логистика). Редактируется
+// всё, что начинается с (today + EDITABLE_LEAD_DAYS) до конца месяца.
+export const EDITABLE_LEAD_DAYS = 3
+
+export function getEditableDays(monthKey = currentMonthKey, lead = EDITABLE_LEAD_DAYS) {
+  const monthDays = getMonthDays(monthKey)
+  const [y, m, d] = todayStr.split('-').map(Number)
+  const cutoff = toISO(new Date(y, m - 1, d + lead))
+  return monthDays.filter((day) => day >= cutoff)
+}
+
+export function getEditableCutoffDate(lead = EDITABLE_LEAD_DAYS) {
+  const [y, m, d] = todayStr.split('-').map(Number)
+  return toISO(new Date(y, m - 1, d + lead))
+}
+
+// Факт продаж приходит с опозданием ACTUAL_LAG_DAYS дней.
+// Т.е. на сегодня 23-е мы имеем достоверный факт только по 20-е включительно;
+// дни 21, 22, 23 — «ждём факт», их дельту с планом ещё нельзя считать.
+export const ACTUAL_LAG_DAYS = 3
+
+export function getActualCutoffDate(lag = ACTUAL_LAG_DAYS) {
+  const [y, m, d] = todayStr.split('-').map(Number)
+  return toISO(new Date(y, m - 1, d - lag))
+}
+
 function generateAllSales(beerId) {
   const rand = seededRandom(beerId * 1000)
   const map = {}
@@ -111,7 +146,44 @@ function generateAllSales(beerId) {
   return map
 }
 
-export const beerData = beers.map((beer) => ({
-  ...beer,
-  salesByDay: generateAllSales(beer.id)
-}))
+// Мок факта: близко к плану, но с шумом. У некоторых SKU/дней сдвиг сильнее — чтобы
+// на variance-таблице были видны и «в норме», и провалы, и переотгрузки.
+// Данные есть только по дни ≤ getActualCutoffDate() (лаг 3 дня).
+function generateActuals(beerId, salesByDay) {
+  const rand = seededRandom(beerId * 777 + 13)
+  const map = {}
+  const cutoff = getActualCutoffDate()
+  const skuBias = 0.9 + rand() * 0.2 // 90%–110% — «характер» этого SKU
+  for (const [day, plan] of Object.entries(salesByDay)) {
+    if (day > cutoff) continue
+    const dayNoise = 0.82 + rand() * 0.32 // 82%–114%
+    const shockChance = rand()
+    const shock = shockChance < 0.05 ? 0.4 : shockChance > 0.97 ? 1.6 : 1
+    map[day] = Math.max(0, Math.round(plan * skuBias * dayNoise * shock))
+  }
+  return map
+}
+
+function assignChains(beerId) {
+  const rand = seededRandom(beerId * 31 + 7)
+  const assigned = chains.filter(() => rand() > 0.35).map((c) => c.id)
+  if (assigned.length === 0) {
+    const idx = Math.floor(rand() * chains.length)
+    assigned.push(chains[idx].id)
+  }
+  return assigned
+}
+
+export const beerData = beers.map((beer) => {
+  const salesByDay = generateAllSales(beer.id)
+  return {
+    ...beer,
+    chainIds: assignChains(beer.id),
+    salesByDay,
+    actualByDay: generateActuals(beer.id, salesByDay)
+  }
+})
+
+export function getBeersForChain(chainId) {
+  return beerData.filter((b) => b.chainIds.includes(chainId))
+}
