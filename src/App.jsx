@@ -1230,124 +1230,36 @@ function BeerDetails({ beer, monthKey = currentMonthKey, onBack, onChange, isApp
     })
   }
 
-  // Bulk-обнуление выделенных дней с rolling-раскладкой суммы по остальным editable-дням.
-  // Нужен, потому что editDayRolling читает overrides из замыкания — в forEach вызовы затирают
-  // друг друга и работает только последний. Здесь делаем всё за один setOverrides.
+  // Bulk-снятие значений с выделенных дней; total идёт за суммой (уменьшается на удалённое).
   function clearDaysRolling(daysArr) {
     if (daysArr.length === 0) return
-    const selectedSet = new Set(daysArr)
     const totalRemoved = daysArr.reduce((s, d) => s + (overrides[d] || 0), 0)
-
-    const next = { ...overrides }
-    daysArr.forEach((d) => {
-      if (isApproved) next[d] = 0
-      else delete next[d]
+    setOverrides((prev) => {
+      const next = { ...prev }
+      daysArr.forEach((d) => delete next[d])
+      return next
     })
-
-    if (!isApproved || totalRemoved === 0) {
-      setOverrides(next)
-      return
-    }
-
-    const recipients = monthDays.filter(
-      (d) => !selectedSet.has(d) && !pinned.has(d) && isDayEditable(d)
-    )
-    if (recipients.length === 0) {
-      setOverrides(next)
-      return
-    }
-
-    const recipientsSum = recipients.reduce((s, d) => s + (overrides[d] || 0), 0)
-    const target = recipientsSum + totalRemoved
-
-    const weightOf =
-      recipientsSum > 0 ? (d) => Math.max(0, overrides[d] || 0) : () => 1
-    const weightSum = recipients.reduce((s, d) => s + weightOf(d), 0)
-    if (weightSum <= 0) {
-      setOverrides(next)
-      return
-    }
-
-    const parts = recipients.map((d) => {
-      const exact = target * (weightOf(d) / weightSum)
-      const floor = Math.floor(exact)
-      return { d, floor, frac: exact - floor }
-    })
-    let leftover = target - parts.reduce((s, p) => s + p.floor, 0)
-    parts.sort((a, b) => b.frac - a.frac)
-    for (let i = 0; i < parts.length && leftover > 0; i++) {
-      parts[i].floor += 1
-      leftover -= 1
-    }
-    for (const p of parts) next[p.d] = p.floor
-    setOverrides(next)
+    if (totalRemoved > 0) setTotalUnits((t) => Math.max(0, t - totalRemoved))
   }
 
-  // Rolling forecast: правит день X и раскидывает delta (prev − new) пропорционально
-  // по всем незакреплённым дням > X. Total сохраняется. Дни ≤ X не трогаются.
-  // Если будущих дней нет / все закреплены / все нулевые — просто применяем новое значение,
-  // total перестанет сходиться и это будет видно в саммари.
+  // Ставим значение дня напрямую; total идёт за суммой (delta прибавляется к totalUnits).
   function editDayRolling(day, units) {
     if (!isDayEditable(day)) return
-    let clean = Math.max(0, Math.round(units))
+    const clean = Math.max(0, Math.round(units))
     const prev = overrides[day] || 0
-
-    const future = monthDays.filter(
-      (d) => d > day && !pinned.has(d) && isDayEditable(d)
-    )
-    const futureSum = future.reduce((s, d) => s + (overrides[d] || 0), 0)
-
-    // В approved: distributedTotal не должен превысить утверждённый totalUnits.
-    // Максимум для дня = prev + всё, что можно "забрать" из будущих editable-дней +
-    // текущий недобор (gap) — свободные единицы плана ещё не разложены и их можно занять
-    // без изменения общего totalUnits.
-    if (isApproved) {
-      const gap = Math.max(0, totalUnits - distributedTotal)
-      const maxAllowed = prev + futureSum + gap
-      if (clean > maxAllowed) clean = maxAllowed
-    }
-
-    const delta = prev - clean
-
-    if (delta === 0 || future.length === 0) {
-      setOverrides((prevMap) => ({ ...prevMap, [day]: clean }))
-      return
-    }
-
-    const target = Math.max(0, futureSum + delta)
-
-    const weightOf =
-      futureSum > 0 ? (d) => Math.max(0, overrides[d] || 0) : () => 1
-    const weightSum = future.reduce((s, d) => s + weightOf(d), 0)
-
-    const next = { ...overrides, [day]: clean }
-    if (weightSum <= 0) {
-      setOverrides(next)
-      return
-    }
-
-    const parts = future.map((d) => {
-      const exact = target * (weightOf(d) / weightSum)
-      const floor = Math.floor(exact)
-      return { d, floor, frac: exact - floor }
-    })
-    let leftover = target - parts.reduce((s, p) => s + p.floor, 0)
-    parts.sort((a, b) => b.frac - a.frac)
-    for (let i = 0; i < parts.length && leftover > 0; i++) {
-      parts[i].floor += 1
-      leftover -= 1
-    }
-    for (const p of parts) next[p.d] = p.floor
-    setOverrides(next)
+    const delta = clean - prev
+    setOverrides((prevMap) => ({ ...prevMap, [day]: clean }))
+    if (delta !== 0) setTotalUnits((t) => Math.max(0, t + delta))
   }
 
   function clearDayOverride(day) {
-    if (isApproved) return
-    setOverrides((prev) => {
-      const next = { ...prev }
+    const prev = overrides[day] || 0
+    setOverrides((prevMap) => {
+      const next = { ...prevMap }
       delete next[day]
       return next
     })
+    if (prev > 0) setTotalUnits((t) => Math.max(0, t - prev))
   }
 
   function setSameUnitsForDays(daysArr, units) {
@@ -1424,38 +1336,15 @@ function BeerDetails({ beer, monthKey = currentMonthKey, onBack, onChange, isApp
 
     if (n === 1) {
       const day = selArr[0]
-      const future = monthDays.filter(
-        (d) => d > day && !pinned.has(d) && isDayEditable(d)
-      )
-      const hasFuture = future.length > 0
-      const futureSum = future.reduce((s, d) => s + (overrides[d] || 0), 0)
       const prev = overrides[day] || 0
-      const gap = Math.max(0, totalUnits - distributedTotal)
-      const maxAllowed = prev + futureSum + gap
-      const canGrow = maxAllowed > prev
-      const approvedHint = canGrow
-        ? gap > 0 && hasFuture
-          ? `Максимум ограничен утверждённым total — берётся из недобора (${formatNumber(gap)}) и следующих editable-дней`
-          : gap > 0
-          ? `Максимум ограничен утверждённым total — берётся из недобора (${formatNumber(gap)})`
-          : 'Максимум ограничен утверждённым total — берётся из следующих editable-дней'
-        : 'Editable-дней впереди нет и весь total уже разложен — увеличить нельзя, меняй план через черновик'
-      const draftHint = hasFuture
-        ? 'Разница будет разложена пропорционально по следующим дням'
-        : 'Дней после этого нет — total может перестать сходиться'
-      const draftPromptHint = hasFuture ? 'Остаток перераспределится на дни после' : undefined
-
-      const hasValue = (overrides[day] || 0) > 0
+      const hasValue = prev > 0
       items.push({
         label: hasValue ? 'Изменить количество…' : 'Добавить отгрузку…',
-        hint: isApproved ? approvedHint : draftHint,
         action: () => {
           setContextMenu(null)
           setInputPrompt({
             title: formatDayLabel(day),
-            hint: isApproved ? undefined : draftPromptHint,
             defaultValue: prev,
-            max: isApproved ? maxAllowed : undefined,
             onSubmit: (v) => {
               editDayRolling(day, v)
               setSelection(new Set())
@@ -1463,27 +1352,15 @@ function BeerDetails({ beer, monthKey = currentMonthKey, onBack, onChange, isApp
           })
         }
       })
-      if (overrides[day] != null && overrides[day] > 0) {
-        if (isApproved) {
-          items.push({
-            label: 'Убрать отгрузку',
-            hint: 'Значение обнулится, разница перераспределится на следующие editable-дни',
-            action: () => {
-              editDayRolling(day, 0)
-              setSelection(new Set())
-              setContextMenu(null)
-            }
-          })
-        } else {
-          items.push({
-            label: 'Убрать отгрузку',
-            action: () => {
-              clearDayOverride(day)
-              setSelection(new Set())
-              setContextMenu(null)
-            }
-          })
-        }
+      if (hasValue) {
+        items.push({
+          label: 'Убрать отгрузку',
+          action: () => {
+            clearDayOverride(day)
+            setSelection(new Set())
+            setContextMenu(null)
+          }
+        })
       }
     }
 
@@ -1520,12 +1397,8 @@ function BeerDetails({ beer, monthKey = currentMonthKey, onBack, onChange, isApp
         })
       }
       if (anyHasValueMulti) {
-        const totalRemoved = selArr.reduce((s, d) => s + (overrides[d] || 0), 0)
         items.push({
           label: `Убрать отгрузки (${n})`,
-          hint: isApproved
-            ? `Значения обнулятся, ${formatNumber(totalRemoved)} гл перейдёт на остальные editable-дни`
-            : undefined,
           action: () => {
             clearDaysRolling(selArr)
             setSelection(new Set())
@@ -2790,24 +2663,9 @@ function PlanRail({
     if (!singleDay || !isDayEditable(singleDay)) return
     const day = singleDay
     const prev = overrides[day] || 0
-    const future = monthDays.filter(
-      (d) => d > day && !pinned.has(d) && isDayEditable(d)
-    )
-    const hasFuture = future.length > 0
-    const futureSum = future.reduce((s, d) => s + (overrides[d] || 0), 0)
-    const maxAllowed = prev + futureSum
-    const hint = isApproved
-      ? hasFuture
-        ? 'Максимум ограничен утверждённым total — берётся из следующих editable-дней'
-        : 'Editable-дней впереди нет'
-      : hasFuture
-      ? 'Остаток перераспределится на дни после'
-      : undefined
     onPrompt({
       title: formatDayLabel(day),
-      hint,
       defaultValue: prev,
-      max: isApproved ? maxAllowed : undefined,
       onSubmit: (v) => {
         onEditDayRolling(day, v)
         onSelectionChange(new Set())
@@ -2909,11 +2767,6 @@ function PlanRail({
                   >
                     Убрать отгрузку
                   </button>
-                  {isApproved && (
-                    <p className="rail-action-note">
-                      План утверждён — {formatNumber(singleValue)} гл перейдёт на остальные editable-дни пропорционально.
-                    </p>
-                  )}
                 </>
               )}
             </div>
@@ -2948,36 +2801,19 @@ function PlanRail({
                   Заполнить недобор ({formatNumber(gap)} гл)
                 </button>
               )}
-              <button
-                className="rail-action"
-                onClick={actionSameUnits}
-                disabled={isApproved}
-                title={isApproved ? 'План утверждён — действие заблокировано' : ''}
-              >
+              <button className="rail-action" onClick={actionSameUnits}>
                 {anySelHasValue ? 'Изменить одинаково…' : 'Добавить…'}
               </button>
-              <button
-                className="rail-action"
-                onClick={actionDistribute}
-                disabled={isApproved}
-                title={isApproved ? 'План утверждён — действие заблокировано' : ''}
-              >
+              <button className="rail-action" onClick={actionDistribute}>
                 Равномерно распределить…
               </button>
               {anySelHasValue && (
-                <>
-                  <button
-                    className="rail-action rail-action-danger"
-                    onClick={actionClearShipments}
-                  >
-                    Убрать отгрузки
-                  </button>
-                  {isApproved && (
-                    <p className="rail-action-note">
-                      План утверждён — {formatNumber(selSum)} гл перейдёт на остальные editable-дни пропорционально.
-                    </p>
-                  )}
-                </>
+                <button
+                  className="rail-action rail-action-danger"
+                  onClick={actionClearShipments}
+                >
+                  Убрать отгрузки
+                </button>
               )}
             </div>
           </>
