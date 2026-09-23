@@ -72,7 +72,7 @@ h1, h2, h3 {
 .topbar-inner {
   max-width: 1920px;
   margin: 0 auto;
-  padding: 14px 20px;
+  padding: 14px 32px;
   display: grid;
   grid-template-columns: 220px 1fr 200px;
   gap: 24px;
@@ -136,6 +136,211 @@ h1, h2, h3 {
   font-size: 12px;
 }
 
+/* ---------- NETWORK BAR (chain selector) ---------- */
+
+.network-bar {
+  border-top: 1px solid var(--border-soft);
+  background: var(--bg-alt);
+  border-bottom: 3px solid var(--current-brand-color, transparent);
+  transition: border-bottom-color 0.2s ease;
+}
+
+.network-bar-inner {
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: 10px 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.network-bar-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.network-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.network-tab {
+  --brand-color: #111827;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-soft);
+  transition: border-color 0.12s ease, background 0.12s ease,
+    color 0.12s ease, box-shadow 0.15s ease;
+}
+
+.network-tab:hover {
+  border-color: color-mix(in srgb, var(--brand-color) 40%, var(--border-strong));
+  color: var(--text);
+}
+
+.network-tab:hover .network-tab-logo {
+  filter: none;
+  opacity: 1;
+}
+
+.network-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-color) 24%, transparent);
+}
+
+.network-tab-logo {
+  display: block;
+  height: 28px;
+  width: auto;
+  max-width: 140px;
+  filter: grayscale(1);
+  opacity: 0.55;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+
+.network-tab-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.network-tab.is-active {
+  background: color-mix(in srgb, var(--brand-color) 10%, #fff);
+  border-color: color-mix(in srgb, var(--brand-color) 55%, var(--border));
+  color: var(--text);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--brand-color) 25%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--brand-color) 30%, transparent) inset;
+}
+
+.network-tab.is-active .network-tab-logo {
+  filter: none;
+  opacity: 1;
+}
+
+.network-tab.is-active .network-tab-label {
+  color: var(--text);
+}
+
+/* ---------- Chain switch confirmation dialog ---------- */
+
+.chain-switch-dialog {
+  width: fit-content;
+  max-width: 460px;
+}
+
+.chain-switch-dialog .dialog-title {
+  text-transform: none;
+  text-align: center;
+}
+
+.chain-switch-dialog .dialog-actions {
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.chain-switch-dialog .dialog-actions .btn {
+  white-space: nowrap;
+}
+
+.chain-switch-flow {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  grid-template-rows: auto auto;
+  column-gap: 14px;
+  row-gap: 6px;
+  align-items: center;
+  justify-items: center;
+  justify-content: center;
+  margin: 12px 0 4px;
+}
+
+.chain-switch-step-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+.chain-switch-card {
+  --brand-color: #111827;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--brand-color) 40%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brand-color) 8%, #fff);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 140px;
+  justify-content: center;
+}
+
+.chain-switch-card.is-from {
+  opacity: 0.7;
+}
+
+.chain-switch-card-logo {
+  height: 22px;
+  width: auto;
+  max-width: 110px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.chain-switch-card-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chain-switch-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--muted-2);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.chain-switch-note {
+  margin: 10px 0 16px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.chain-switch-dialog .btn-primary {
+  background: color-mix(in srgb, var(--brand-color, var(--navy)) 75%, #000);
+  border-color: color-mix(in srgb, var(--brand-color, var(--navy)) 75%, #000);
+  color: #fff;
+}
+
+.chain-switch-dialog .btn-primary:hover {
+  background: color-mix(in srgb, var(--brand-color, var(--navy)) 60%, #000);
+  border-color: color-mix(in srgb, var(--brand-color, var(--navy)) 60%, #000);
+}
+
 /* ---------- PAGE ---------- */
 
 .page {
@@ -186,6 +391,17 @@ h1, h2, h3 {
   color: var(--text);
   letter-spacing: -0.03em;
   line-height: 1.1;
+}
+
+.chain-title-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-right: 12px;
+  align-self: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.04);
 }
 
 .chain-title-select {
@@ -541,6 +757,11 @@ td.name-col.beer-name {
 }
 
 .day-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
@@ -584,16 +805,11 @@ td.name-col.beer-name {
 }
 
 .days-table thead th.today .day-num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 24px;
-  height: 24px;
   border-radius: 6px;
   background: var(--accent);
   color: #fff;
   font-weight: 700;
-  font-size: 13px;
 }
 
 .days-table thead th.today .day-dow {
@@ -624,6 +840,10 @@ td.name-col.beer-name {
   color: var(--text);
   border-left: 1px solid var(--border);
   font-size: 14px;
+}
+
+.days-table .total-col {
+  padding-right: 16px;
 }
 
 thead .total-col {
@@ -2358,6 +2578,55 @@ thead .actions-col {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+/* ---------- Month tabs (текущий + 3 вперёд) ---------- */
+
+.month-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  margin-right: 8px;
+}
+
+.month-tab {
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.month-tab:hover {
+  color: var(--text);
+}
+
+.month-tab.is-active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.month-tab.is-current::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 /* ---------- View tabs (План / План vs Факт) ---------- */

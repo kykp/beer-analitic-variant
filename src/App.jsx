@@ -7,12 +7,21 @@ import {
   getMonthDays,
   getMonthLabel,
   getEditableDays,
-  getEditableCutoffDate,
+  shiftMonth,
   EDITABLE_LEAD_DAYS,
   ACTUAL_LAG_DAYS,
   getActualCutoffDate,
   todayStr
 } from './mockData.js'
+import lentaLogo from './assets/chains/lenta.svg'
+import pyaterochkaLogo from './assets/chains/pyaterochka.svg'
+import perekrestokLogo from './assets/chains/perekrestok.svg'
+
+const CHAIN_LOGOS = {
+  lenta: lentaLogo,
+  pyaterochka: pyaterochkaLogo,
+  perekrestok: perekrestokLogo
+}
 
 function formatNumber(n) {
   return n.toLocaleString('ru-RU')
@@ -90,26 +99,6 @@ function intensity(value, max) {
 }
 
 const STORAGE_PREFIX = 'mosbrew_beer_plan_v1_'
-const STORAGE_STATUS_PREFIX = 'mosbrew_plan_status_v1_'
-
-function statusKey(chainId, monthKey) {
-  return `${STORAGE_STATUS_PREFIX}${chainId}_${monthKey}`
-}
-
-function loadPlanStatus(chainId, monthKey) {
-  try {
-    const raw = localStorage.getItem(statusKey(chainId, monthKey))
-    return raw === 'approved' ? 'approved' : 'draft'
-  } catch {
-    return 'draft'
-  }
-}
-
-function savePlanStatus(chainId, monthKey, status) {
-  try {
-    localStorage.setItem(statusKey(chainId, monthKey), status)
-  } catch {}
-}
 
 function loadBeerPlan(beerId) {
   try {
@@ -219,13 +208,12 @@ const DISTRIBUTION_PRESETS = [
 ]
 
 function applyPlansToBeers(beers) {
-  const monthDays = getMonthDays(currentMonthKey)
   return beers.map((beer) => {
     const plan = loadBeerPlan(beer.id)
     if (!plan) return beer
     const salesByDay = { ...beer.salesByDay }
-    for (const day of monthDays) {
-      salesByDay[day] = plan.overrides[day] || 0
+    for (const [day, val] of Object.entries(plan.overrides)) {
+      salesByDay[day] = val
     }
     return { ...beer, salesByDay }
   })
@@ -236,13 +224,6 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null)
   const [selectedBrand, setSelectedBrand] = useState(null)
   const [selectedChainId, setSelectedChainId] = useState(defaultChainId)
-  const [planStatus, setPlanStatus] = useState(() =>
-    loadPlanStatus(defaultChainId, currentMonthKey)
-  )
-
-  useEffect(() => {
-    setPlanStatus(loadPlanStatus(selectedChainId, currentMonthKey))
-  }, [selectedChainId])
   const [collapsedBrands, setCollapsedBrands] = useState(() => {
     const brands = new Set()
     initialBeerData.forEach((b) => brands.add(b.brand))
@@ -251,6 +232,15 @@ export default function App() {
   const [rowMenu, setRowMenu] = useState(null)
   const [brandMenu, setBrandMenu] = useState(null)
   const [viewMode, setViewMode] = useState('plan') // 'plan' | 'variance'
+  const [activeMonthKey, setActiveMonthKey] = useState(currentMonthKey)
+
+  const availableMonths = useMemo(() => {
+    // текущий месяц + 3 вперёд
+    return [0, 1, 2, 3].map((delta) => {
+      const key = shiftMonth(currentMonthKey, delta)
+      return { key, label: getMonthLabel(key) }
+    })
+  }, [])
 
   function openRowMenu(e, beerId) {
     e.preventDefault()
@@ -262,26 +252,16 @@ export default function App() {
     setRowMenu({ x, y, beerId })
   }
 
-  function openRowMenuFromKebab(e, beerId) {
+  function editBeerFromKebab(e, beerId) {
     e.preventDefault()
     e.stopPropagation()
-    const rect = e.currentTarget.getBoundingClientRect()
-    const menuWidth = 200
-    const menuMaxHeight = 200
-    const x = Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)
-    const y = Math.min(rect.bottom + 4, window.innerHeight - menuMaxHeight - 8)
-    setRowMenu({ x, y, beerId })
+    setSelectedId(beerId)
   }
 
-  function openBrandMenuFromKebab(e, brand) {
+  function editBrandFromKebab(e, brand) {
     e.preventDefault()
     e.stopPropagation()
-    const rect = e.currentTarget.getBoundingClientRect()
-    const menuWidth = 220
-    const menuMaxHeight = 200
-    const x = Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)
-    const y = Math.min(rect.bottom + 4, window.innerHeight - menuMaxHeight - 8)
-    setBrandMenu({ x, y, brand })
+    setSelectedBrand(brand)
   }
 
   function openBrandMenu(e, brand) {
@@ -294,38 +274,14 @@ export default function App() {
     setBrandMenu({ x, y, brand })
   }
 
-  const monthDays = useMemo(() => getMonthDays(currentMonthKey), [])
-  const monthLabel = useMemo(() => getMonthLabel(currentMonthKey), [])
+  const monthDays = useMemo(() => getMonthDays(activeMonthKey), [activeMonthKey])
+  const monthLabel = useMemo(() => getMonthLabel(activeMonthKey), [activeMonthKey])
   const editableDays = useMemo(
-    () => new Set(getEditableDays(currentMonthKey, EDITABLE_LEAD_DAYS)),
-    []
-  )
-  const editableCutoff = useMemo(
-    () => getEditableCutoffDate(EDITABLE_LEAD_DAYS),
-    []
-  )
-  const editableCutoffLabel = useMemo(
-    () =>
-      new Date(editableCutoff).toLocaleDateString('ru-RU', {
-        day: 'numeric',
-        month: 'long'
-      }),
-    [editableCutoff]
+    () => new Set(getEditableDays(activeMonthKey, EDITABLE_LEAD_DAYS)),
+    [activeMonthKey]
   )
 
-  function togglePlanStatus() {
-    setPlanStatus((prev) => {
-      const next = prev === 'approved' ? 'draft' : 'approved'
-      savePlanStatus(selectedChainId, currentMonthKey, next)
-      return next
-    })
-  }
-
-  const isApproved = planStatus === 'approved'
-  const selectedChainName = useMemo(
-    () => chains.find((c) => c.id === selectedChainId)?.name ?? '',
-    [selectedChainId]
-  )
+  const isApproved = false
 
   const remainingDays = useMemo(
     () => monthDays.filter((d) => d >= todayStr),
@@ -518,21 +474,52 @@ export default function App() {
     )
   }
 
+  const [pendingChainId, setPendingChainId] = useState(null)
+
   function goHome() {
     setSelectedId(null)
     setSelectedBrand(null)
   }
 
+  function handleSelectChain(id) {
+    if (id === selectedChainId) return
+    setPendingChainId(id)
+  }
+
+  function confirmChainSwitch() {
+    if (pendingChainId == null) return
+    setSelectedChainId(pendingChainId)
+    setPendingChainId(null)
+    goHome()
+  }
+
+  function cancelChainSwitch() {
+    setPendingChainId(null)
+  }
+
+  const topbarProps = {
+    onHome: goHome,
+    chains,
+    selectedChainId,
+    onSelectChain: handleSelectChain,
+    chainLogos: CHAIN_LOGOS,
+    pendingChainId,
+    onConfirmChainSwitch: confirmChainSwitch,
+    onCancelChainSwitch: cancelChainSwitch
+  }
+
   if (selected) {
     return (
       <BeerDetails
-        key={selected.id}
+        key={selected.id + ':' + activeMonthKey}
         beer={selected}
+        monthKey={activeMonthKey}
         onBack={() => setSelectedId(null)}
         onHome={goHome}
         onChange={(next) => updateBeerSales(selected.id, next)}
         isApproved={isApproved}
         editableDays={editableDays}
+        topbarProps={topbarProps}
       />
     )
   }
@@ -543,9 +530,10 @@ export default function App() {
     )
     return (
       <BrandDetails
-        key={selectedBrand}
+        key={selectedBrand + ':' + activeMonthKey}
         brand={selectedBrand}
         beers={brandBeers}
+        monthKey={activeMonthKey}
         onBack={() => setSelectedBrand(null)}
         onHome={goHome}
         onAddShipment={(units) =>
@@ -556,51 +544,37 @@ export default function App() {
         }
         isApproved={isApproved}
         editableDays={editableDays}
+        topbarProps={topbarProps}
       />
     )
   }
 
+  const selectedChain = chains.find((c) => c.id === selectedChainId)
+  const selectedChainName = selectedChain?.name ?? ''
+  const selectedChainColor = selectedChain?.color
+
   return (
     <>
-      <TopBar onHome={goHome} />
+      <TopBar {...topbarProps} />
       <div className="page">
         <div className="toolbar">
           <div className="toolbar-heading">
             <p className="eyebrow">План продаж</p>
             <h1 className="chain-title">
-              <select
-                className="chain-title-select"
-                value={selectedChainId}
-                onChange={(e) => setSelectedChainId(e.target.value)}
-                aria-label="Выбор сети"
-              >
-                {chains.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <span className="chain-title-caret" aria-hidden="true">⌄</span>
+              {selectedChainColor && (
+                <span
+                  className="chain-title-dot"
+                  style={{ background: selectedChainColor }}
+                  aria-hidden="true"
+                />
+              )}
+              {selectedChainName}
             </h1>
             <p className="subtitle">
               {monthLabel} · план на месяц <strong>{formatNumber(totals.grand)}</strong> гл
-              <span className={`status-badge ${isApproved ? 'is-approved' : 'is-draft'}`}>
-                {isApproved ? '● Утверждён' : '○ Черновик'}
-              </span>
             </p>
           </div>
           <div className="toolbar-actions">
-            <button
-              className={`btn-ghost status-toggle ${isApproved ? 'is-approved' : ''}`}
-              onClick={togglePlanStatus}
-              title={
-                isApproved
-                  ? `Вернуть план «${selectedChainName}» в черновик — снова можно править весь месяц`
-                  : `Утвердить план «${selectedChainName}» — ближайшие ${EDITABLE_LEAD_DAYS} дн. будут заморожены, редактируется только с ${editableCutoffLabel}`
-              }
-            >
-              {isApproved ? 'Вернуть в черновик' : 'Утвердить план'}
-            </button>
             <button className="btn-ghost" onClick={toggleAll}>
               {allCollapsed ? 'Развернуть все' : 'Свернуть все'}
             </button>
@@ -609,6 +583,24 @@ export default function App() {
               <input placeholder="Поиск по позициям" />
             </div>
           </div>
+        </div>
+        <div className="month-tabs" role="tablist" aria-label="Выбор месяца">
+          {availableMonths.map((m) => {
+            const isActive = m.key === activeMonthKey
+            const isCurrent = m.key === currentMonthKey
+            return (
+              <button
+                key={m.key}
+                role="tab"
+                aria-selected={isActive}
+                className={`month-tab ${isActive ? 'is-active' : ''} ${isCurrent ? 'is-current' : ''}`}
+                onClick={() => setActiveMonthKey(m.key)}
+                title={isCurrent ? 'Текущий месяц' : m.label}
+              >
+                {m.label}
+              </button>
+            )
+          })}
         </div>
         <div className="view-tabs" role="tablist">
           <button
@@ -635,19 +627,12 @@ export default function App() {
             beers={beerRows}
             brandGroups={brandGroups}
             monthDays={monthDays}
+            monthKey={activeMonthKey}
             collapsedBrands={collapsedBrands}
             toggleBrand={toggleBrand}
           />
         ) : (
           <>
-        {isApproved && (
-          <div className="approved-banner">
-            План «{selectedChainName}» на {monthLabel} утверждён. Ближайшие {EDITABLE_LEAD_DAYS} дн.
-            заморожены (по сегодня включительно) — редактировать можно только с{' '}
-            <strong>{editableCutoffLabel}</strong> до конца месяца.
-          </div>
-        )}
-
         <div className="table-wrap">
           <div className="table-scroll">
             <table className="beer-table days-table">
@@ -711,7 +696,7 @@ export default function App() {
                             className="kebab-btn brand-kebab"
                             aria-label={`Действия для категории «${group.brand}»`}
                             title="Действия"
-                            onClick={(e) => openBrandMenuFromKebab(e, group.brand)}
+                            onClick={(e) => editBrandFromKebab(e, group.brand)}
                           >
                             <KebabIcon />
                           </button>
@@ -766,7 +751,7 @@ export default function App() {
                                 className="kebab-btn"
                                 aria-label={`Действия для «${beer.name}»`}
                                 title="Действия"
-                                onClick={(e) => openRowMenuFromKebab(e, beer.id)}
+                                onClick={(e) => editBeerFromKebab(e, beer.id)}
                               >
                                 <KebabIcon />
                               </button>
@@ -847,8 +832,8 @@ export default function App() {
         </div>
 
         <p className="hint">
-          Клик по названию бренда — свернуть/развернуть. Меню ⋯ в начале строки или правый клик —
-          «Изменить план».
+          Клик по названию бренда — свернуть/развернуть. Кнопка ⋯ в начале строки — «Изменить
+          план»; правый клик открывает контекстное меню.
         </p>
 
         {rowMenu && (
@@ -894,34 +879,214 @@ export default function App() {
   )
 }
 
-function TopBar({ onHome }) {
+function TopBar({
+  onHome,
+  chains: chainList,
+  selectedChainId,
+  onSelectChain,
+  chainLogos,
+  pendingChainId,
+  onConfirmChainSwitch,
+  onCancelChainSwitch
+}) {
+  const currentChain = chainList?.find((c) => c.id === selectedChainId)
+  const pendingChain =
+    pendingChainId != null
+      ? chainList?.find((c) => c.id === pendingChainId)
+      : null
   return (
-    <div className="topbar">
-      <div className="topbar-inner">
+    <>
+      <div
+        className="topbar"
+        style={
+          currentChain?.color
+            ? { '--current-brand-color': currentChain.color }
+            : undefined
+        }
+      >
+        <div className="topbar-inner">
+          <div
+            className="topbar-brand"
+            role={onHome ? 'button' : undefined}
+            tabIndex={onHome ? 0 : undefined}
+            onClick={onHome}
+            onKeyDown={(e) => {
+              if (!onHome) return
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onHome()
+              }
+            }}
+            title={onHome ? 'На главную' : undefined}
+            style={onHome ? { cursor: 'pointer' } : undefined}
+          >
+            <span className="topbar-name">#mosbrew</span>
+          </div>
+          <div className="topbar-search">
+            <span className="kbd">⌘ K</span>
+            <span>для поиска</span>
+          </div>
+          <div className="topbar-user">
+            <span className="topbar-user-name">Иван П.</span>
+            <span className="topbar-user-caret">⌄</span>
+          </div>
+        </div>
+        {chainList && chainList.length > 0 && (
+          <NetworkBar
+            chains={chainList}
+            selectedChainId={selectedChainId}
+            onSelectChain={onSelectChain}
+            logos={chainLogos || {}}
+          />
+        )}
+      </div>
+      {pendingChain && currentChain && (
+        <ConfirmChainSwitchDialog
+          from={currentChain}
+          to={pendingChain}
+          fromLogo={chainLogos?.[currentChain.id]}
+          toLogo={chainLogos?.[pendingChain.id]}
+          onCancel={onCancelChainSwitch}
+          onConfirm={onConfirmChainSwitch}
+        />
+      )}
+    </>
+  )
+}
+
+function ConfirmChainSwitchDialog({
+  from,
+  to,
+  fromLogo,
+  toLogo,
+  onCancel,
+  onConfirm
+}) {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onCancel?.()
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        onConfirm?.()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel, onConfirm])
+
+  return (
+    <div className="dialog-overlay" onClick={onCancel}>
+      <div
+        className="dialog chain-switch-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="chain-switch-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="dialog-title" id="chain-switch-title">
+          Переключить сеть?
+        </div>
+        <div className="chain-switch-flow">
+          <div className="chain-switch-step-label">Сейчас</div>
+          <span aria-hidden="true" />
+          <div className="chain-switch-step-label">Переключить на</div>
+          <div
+            className="chain-switch-card is-from"
+            style={{ '--brand-color': from.color || '#111827' }}
+          >
+            {fromLogo && (
+              <img
+                src={fromLogo}
+                alt={from.hasWordmark ? from.name : ''}
+                className="chain-switch-card-logo"
+              />
+            )}
+            {!from.hasWordmark && (
+              <span className="chain-switch-card-name">{from.name}</span>
+            )}
+          </div>
+          <span className="chain-switch-arrow" aria-hidden="true">
+            →
+          </span>
+          <div
+            className="chain-switch-card is-to"
+            style={{ '--brand-color': to.color || '#111827' }}
+          >
+            {toLogo && (
+              <img
+                src={toLogo}
+                alt={to.hasWordmark ? to.name : ''}
+                className="chain-switch-card-logo"
+              />
+            )}
+            {!to.hasWordmark && (
+              <span className="chain-switch-card-name">{to.name}</span>
+            )}
+          </div>
+        </div>
+        <p className="chain-switch-note">
+          План «{from.name}» сохранён — вернётесь и продолжите. План «{to.name}
+          » откроется на главной.
+        </p>
+        <div className="dialog-actions">
+          <button className="btn" onClick={onCancel}>
+            Отмена
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={onConfirm}
+            autoFocus
+            style={{ '--brand-color': to.color || '#111827' }}
+          >
+            Переключить
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function NetworkBar({ chains: chainList, selectedChainId, onSelectChain, logos }) {
+  return (
+    <div className="network-bar">
+      <div className="network-bar-inner">
+        <span className="network-bar-label">Сеть</span>
         <div
-          className="topbar-brand"
-          role={onHome ? 'button' : undefined}
-          tabIndex={onHome ? 0 : undefined}
-          onClick={onHome}
-          onKeyDown={(e) => {
-            if (!onHome) return
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              onHome()
-            }
-          }}
-          title={onHome ? 'На главную' : undefined}
-          style={onHome ? { cursor: 'pointer' } : undefined}
+          className="network-tabs"
+          role="tablist"
+          aria-label="Выбор торговой сети"
         >
-          <span className="topbar-name">#mosbrew</span>
-        </div>
-        <div className="topbar-search">
-          <span className="kbd">⌘ K</span>
-          <span>для поиска</span>
-        </div>
-        <div className="topbar-user">
-          <span className="topbar-user-name">Иван П.</span>
-          <span className="topbar-user-caret">⌄</span>
+          {chainList.map((chain) => {
+            const isActive = chain.id === selectedChainId
+            const brandColor = chain.color || '#111827'
+            const hideLabel = Boolean(chain.hasWordmark && logos[chain.id])
+            return (
+              <button
+                key={chain.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-label={chain.name}
+                className={`network-tab ${isActive ? 'is-active' : ''}`}
+                style={{ '--brand-color': brandColor }}
+                onClick={() => onSelectChain?.(chain.id)}
+                title={chain.name}
+              >
+                {logos[chain.id] && (
+                  <img
+                    src={logos[chain.id]}
+                    alt={hideLabel ? chain.name : ''}
+                    className="network-tab-logo"
+                  />
+                )}
+                {!hideLabel && (
+                  <span className="network-tab-label">{chain.name}</span>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -941,7 +1106,7 @@ function buildCalendarWeeks(days) {
   return weeks
 }
 
-function BeerDetails({ beer, onBack, onChange, isApproved = false, editableDays }) {
+function BeerDetails({ beer, monthKey = currentMonthKey, onBack, onChange, isApproved = false, editableDays, topbarProps }) {
   const [overrides, setOverrides] = useState(() => loadBeerPlan(beer.id)?.overrides || {})
   const [totalUnits, setTotalUnits] = useState(() => loadBeerPlan(beer.id)?.totalUnits ?? 5000)
   const [pinned] = useState(() => loadBeerPlan(beer.id)?.pinned || new Set())
@@ -949,12 +1114,12 @@ function BeerDetails({ beer, onBack, onChange, isApproved = false, editableDays 
   const [contextMenu, setContextMenu] = useState(null)
   const [inputPrompt, setInputPrompt] = useState(null)
 
-  const monthDays = useMemo(() => getMonthDays(currentMonthKey), [])
+  const monthDays = useMemo(() => getMonthDays(monthKey), [monthKey])
   const editableSet = useMemo(
     () => editableDays instanceof Set ? editableDays : new Set(editableDays || []),
     [editableDays]
   )
-  const isDayEditable = (day) => !isApproved || editableSet.has(day)
+  const isDayEditable = (day) => editableSet.has(day)
 
   useEffect(() => {
     saveBeerPlan(beer.id, { shipmentDays: [], overrides, totalUnits, pinned })
@@ -1431,7 +1596,7 @@ function BeerDetails({ beer, onBack, onChange, isApproved = false, editableDays 
 
   return (
     <>
-      <TopBar />
+      <TopBar {...(topbarProps || {})} />
       <div className="page">
         <button className="back" onClick={onBack}>
           ← Назад к списку
@@ -1445,7 +1610,7 @@ function BeerDetails({ beer, onBack, onChange, isApproved = false, editableDays 
 
         <div className="stat-row">
           <div className="stat">
-            <div className="stat-label">План на {getMonthLabel(currentMonthKey)}</div>
+            <div className="stat-label">План на {getMonthLabel(monthKey)}</div>
             <div className="stat-value">{formatNumber(totalUnits)}</div>
           </div>
           <div className="stat">
@@ -1461,6 +1626,7 @@ function BeerDetails({ beer, onBack, onChange, isApproved = false, editableDays 
         <div className="plan-layout">
           <PlanCalendar
             monthDays={monthDays}
+            monthKey={monthKey}
             selection={selection}
             onSelectionChange={setSelection}
             overrides={overrides}
@@ -1537,20 +1703,22 @@ function formatDayLabel(day) {
 function BrandDetails({
   brand,
   beers,
+  monthKey = currentMonthKey,
   onBack,
   onAddShipment,
   onAddShipmentOnDays,
   isApproved = false,
-  editableDays
+  editableDays,
+  topbarProps
 }) {
-  const monthDays = useMemo(() => getMonthDays(currentMonthKey), [])
+  const monthDays = useMemo(() => getMonthDays(monthKey), [monthKey])
   const weeks = useMemo(() => buildCalendarWeeks(monthDays), [monthDays])
-  const monthLabel = useMemo(() => getMonthLabel(currentMonthKey), [])
+  const monthLabel = useMemo(() => getMonthLabel(monthKey), [monthKey])
   const editableSet = useMemo(
     () => (editableDays instanceof Set ? editableDays : new Set(editableDays || [])),
     [editableDays]
   )
-  const isDayEditable = (day) => !isApproved || editableSet.has(day)
+  const isDayEditable = (day) => editableSet.has(day)
 
   const [selection, setSelection] = useState(() => new Set())
   const [inputPrompt, setInputPrompt] = useState(null)
@@ -1727,7 +1895,19 @@ function BrandDetails({
         hit.add(cell.dataset.day)
       }
     }
-    return hit
+    if (hit.size < 2) return hit
+    let dMin = null
+    let dMax = null
+    for (const d of hit) {
+      if (dMin === null || d < dMin) dMin = d
+      if (dMax === null || d > dMax) dMax = d
+    }
+    const range = new Set()
+    for (const cell of cells) {
+      const d = cell.dataset.day
+      if (d >= dMin && d <= dMax) range.add(d)
+    }
+    return range
   }
 
   useEffect(() => {
@@ -1804,7 +1984,7 @@ function BrandDetails({
 
   return (
     <>
-      <TopBar />
+      <TopBar {...(topbarProps || {})} />
       <div className="page">
         <button className="back back-button" onClick={onBack}>
           ← Назад к списку
@@ -1851,13 +2031,6 @@ function BrandDetails({
                 </button>
               </div>
             </div>
-
-            {isApproved && (
-              <div className="approved-inline-banner">
-                План утверждён. Отгрузка ляжет только на editable-дни (заштрихованные —
-                заблокированы).
-              </div>
-            )}
 
             <div className="ship-calendar">
               <div className="calendar-head">
@@ -2162,10 +2335,10 @@ function BrandDetails({
 }
 
 
-function VarianceView({ beers, brandGroups, monthDays, collapsedBrands, toggleBrand }) {
+function VarianceView({ beers, brandGroups, monthDays, monthKey = currentMonthKey, collapsedBrands, toggleBrand }) {
   const [metric, setMetric] = useState('delta') // delta | delta_pct | actual | plan
   const actualCutoff = useMemo(() => getActualCutoffDate(), [])
-  const monthLabel = useMemo(() => getMonthLabel(currentMonthKey), [])
+  const monthLabel = useMemo(() => getMonthLabel(monthKey), [monthKey])
   const actualCutoffLabel = useMemo(
     () =>
       new Date(actualCutoff).toLocaleDateString('ru-RU', {
@@ -2614,7 +2787,7 @@ function PlanRail({
   }
 
   function actionEditSingle() {
-    if (!singleDay || isApproved && !isDayEditable(singleDay)) return
+    if (!singleDay || !isDayEditable(singleDay)) return
     const day = singleDay
     const prev = overrides[day] || 0
     const future = monthDays.filter(
@@ -2724,7 +2897,7 @@ function PlanRail({
               <button
                 className="rail-action"
                 onClick={actionEditSingle}
-                disabled={isApproved && !isDayEditable(singleDay)}
+                disabled={!isDayEditable(singleDay)}
               >
                 {singleHasValue ? 'Изменить количество…' : 'Добавить значение…'}
               </button>
@@ -2869,6 +3042,7 @@ function PlanRail({
 
 function PlanCalendar({
   monthDays,
+  monthKey = currentMonthKey,
   selection,
   onSelectionChange,
   overrides,
@@ -2882,7 +3056,7 @@ function PlanCalendar({
   isDayEditable = () => true
 }) {
   const weeks = useMemo(() => buildCalendarWeeks(monthDays), [monthDays])
-  const monthLabel = useMemo(() => getMonthLabel(currentMonthKey), [])
+  const monthLabel = useMemo(() => getMonthLabel(monthKey), [monthKey])
 
   const panelRef = useRef(null)
   const marqueeStartRef = useRef(null)
@@ -2920,7 +3094,19 @@ function PlanCalendar({
         hit.add(cell.dataset.day)
       }
     }
-    return hit
+    if (hit.size < 2) return hit
+    let dMin = null
+    let dMax = null
+    for (const d of hit) {
+      if (dMin === null || d < dMin) dMin = d
+      if (dMax === null || d > dMax) dMax = d
+    }
+    const range = new Set()
+    for (const cell of cells) {
+      const d = cell.dataset.day
+      if (d >= dMin && d <= dMax) range.add(d)
+    }
+    return range
   }
 
   useEffect(() => {
@@ -3016,13 +3202,6 @@ function PlanCalendar({
         </div>
       </div>
 
-      {isApproved && (
-        <div className="approved-inline-banner">
-          План утверждён. Правки только в рамках текущего total — разница берётся из следующих
-          editable-дней. Поднять план в целом можно только через переход в черновик.
-        </div>
-      )}
-
       <div className="ship-progress">
         <div
           className={`ship-progress-bar ${isOver ? 'is-over' : ''}`}
@@ -3050,7 +3229,7 @@ function PlanCalendar({
                 const units = overrides[day] || 0
                 const hasOverride = overrides[day] != null && units > 0
                 const isPinned = pinned?.has(day)
-                const isLocked = isApproved && !isDayEditable(day)
+                const isLocked = !isDayEditable(day)
                 const pct = percents[day] || 0
                 return (
                   <button
