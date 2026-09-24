@@ -146,6 +146,20 @@ function generateAllSales(beerId) {
   return map
 }
 
+// SKU «Пиво Жигули Барное 0,45 бан» (id=1): план = номеру дня в месяце,
+// одинаково для каждого месяца — по прямой просьбе.
+function generateSequentialByDayOfMonth() {
+  const map = {}
+  const start = new Date(TODAY.getFullYear(), TODAY.getMonth() - 6, 1)
+  const end = new Date(TODAY.getFullYear(), TODAY.getMonth() + 7, 0)
+  const cur = new Date(start)
+  while (cur <= end) {
+    map[toISO(cur)] = cur.getDate()
+    cur.setDate(cur.getDate() + 1)
+  }
+  return map
+}
+
 // Мок факта: близко к плану, но с шумом. У некоторых SKU/дней сдвиг сильнее — чтобы
 // на variance-таблице были видны и «в норме», и провалы, и переотгрузки.
 // Данные есть только по дни ≤ getActualCutoffDate() (лаг 3 дня).
@@ -175,7 +189,8 @@ function assignChains(beerId) {
 }
 
 export const beerData = beers.map((beer) => {
-  const salesByDay = generateAllSales(beer.id)
+  const salesByDay =
+    beer.id === 1 ? generateSequentialByDayOfMonth() : generateAllSales(beer.id)
   return {
     ...beer,
     chainIds: assignChains(beer.id),
