@@ -1809,8 +1809,13 @@ function BrandDetails({
   const additiveRef = useRef(false)
   const draggedRef = useRef(false)
   const lastClickRef = useRef({ time: 0, day: null })
+  const rangeAnchorRef = useRef(null)
   const openAddRef = useRef(null)
   const [marquee, setMarquee] = useState(null)
+
+  useEffect(() => {
+    rangeAnchorRef.current = null
+  }, [activeMonthKey])
 
   const DRAG_THRESHOLD = 4
   const DBLCLICK_MS = 400
@@ -1920,7 +1925,18 @@ function BrandDetails({
       if (wasDragged) return
       const day = start.cellDay
       if (day) {
-        if (additiveRef.current) {
+        if (start.rangeMode && rangeAnchorRef.current) {
+          const anchor = rangeAnchorRef.current
+          const i1 = monthDays.indexOf(anchor)
+          const i2 = monthDays.indexOf(day)
+          if (i1 !== -1 && i2 !== -1) {
+            const [lo, hi] = i1 <= i2 ? [i1, i2] : [i2, i1]
+            setSelection(new Set(monthDays.slice(lo, hi + 1)))
+          } else {
+            setSelection(new Set([day]))
+            rangeAnchorRef.current = day
+          }
+        } else if (start.toggleMode) {
           const next = new Set(baseSelectionRef.current)
           if (next.has(day)) next.delete(day)
           else next.add(day)
@@ -1930,8 +1946,9 @@ function BrandDetails({
           // чтобы двойной клик мог открыть bulk-диалог на весь диапазон.
         } else {
           setSelection(new Set([day]))
+          rangeAnchorRef.current = day
         }
-      } else if (!additiveRef.current) {
+      } else if (!start.toggleMode && !start.rangeMode) {
         setSelection(new Set())
       }
     }
@@ -1949,8 +1966,16 @@ function BrandDetails({
     const { x, y } = getBodyPoint(e.clientX, e.clientY)
     const cellEl = e.target.closest('.ship-cell[data-day]')
     const cellDay = cellEl ? cellEl.dataset.day : null
-    marqueeStartRef.current = { startX: x, startY: y, cellDay }
-    additiveRef.current = e.shiftKey || e.metaKey || e.ctrlKey
+    const rangeMode = e.shiftKey || e.altKey
+    const toggleMode = !rangeMode && (e.metaKey || e.ctrlKey)
+    marqueeStartRef.current = {
+      startX: x,
+      startY: y,
+      cellDay,
+      rangeMode,
+      toggleMode
+    }
+    additiveRef.current = e.shiftKey || e.metaKey || e.ctrlKey || e.altKey
     baseSelectionRef.current = new Set(selection)
     draggedRef.current = false
     if (!cellEl) e.preventDefault()
@@ -1958,6 +1983,7 @@ function BrandDetails({
 
   function selectWeek(days) {
     setSelection(new Set(days))
+    rangeAnchorRef.current = days[0] || null
   }
 
   function selectAllPreset() {
@@ -2368,6 +2394,10 @@ function BrandDetails({
                 </tbody>
               </table>
             </div>
+
+            <p className="rail-hint">
+              Shift или ⌥ + клик — диапазон · ⌘/Ctrl + клик — добавить или убрать одну ячейку · зажми и веди — прямоугольник
+            </p>
 
           </aside>
         </div>
@@ -3341,7 +3371,7 @@ function PlanRail({
       </div>
 
       <p className="rail-hint">
-        Правый клик по дню — расширенное меню действий.
+        Shift или ⌥ + клик — диапазон · ⌘/Ctrl + клик — добавить или убрать одну ячейку · зажми и веди — прямоугольник · правый клик — меню действий
       </p>
     </aside>
   )
@@ -3371,8 +3401,13 @@ function PlanCalendar({
   const additiveRef = useRef(false)
   const draggedRef = useRef(false)
   const lastClickRef = useRef({ time: 0, day: null })
+  const rangeAnchorRef = useRef(null)
   const openEditRef = useRef(null)
   const [marquee, setMarquee] = useState(null)
+
+  useEffect(() => {
+    rangeAnchorRef.current = null
+  }, [monthKey])
 
   const DRAG_THRESHOLD = 4
   const DBLCLICK_MS = 400
@@ -3504,7 +3539,18 @@ function PlanCalendar({
       if (wasDragged) return
       const day = start.cellDay
       if (day) {
-        if (additiveRef.current) {
+        if (start.rangeMode && rangeAnchorRef.current) {
+          const anchor = rangeAnchorRef.current
+          const i1 = monthDays.indexOf(anchor)
+          const i2 = monthDays.indexOf(day)
+          if (i1 !== -1 && i2 !== -1) {
+            const [lo, hi] = i1 <= i2 ? [i1, i2] : [i2, i1]
+            onSelectionChange(new Set(monthDays.slice(lo, hi + 1)))
+          } else {
+            onSelectionChange(new Set([day]))
+            rangeAnchorRef.current = day
+          }
+        } else if (start.toggleMode) {
           const next = new Set(baseSelectionRef.current)
           if (next.has(day)) next.delete(day)
           else next.add(day)
@@ -3514,8 +3560,9 @@ function PlanCalendar({
           // чтобы двойной клик мог открыть bulk-диалог на весь диапазон.
         } else {
           onSelectionChange(new Set([day]))
+          rangeAnchorRef.current = day
         }
-      } else if (!additiveRef.current) {
+      } else if (!start.toggleMode && !start.rangeMode) {
         onSelectionChange(new Set())
       }
     }
@@ -3536,8 +3583,16 @@ function PlanCalendar({
     if (!cellEl && e.target.closest('input, textarea, select, button, a')) return
     const { x, y } = getPanelPoint(e.clientX, e.clientY)
     const cellDay = cellEl ? cellEl.dataset.day : null
-    marqueeStartRef.current = { startX: x, startY: y, cellDay }
-    additiveRef.current = e.shiftKey || e.metaKey || e.ctrlKey
+    const rangeMode = e.shiftKey || e.altKey
+    const toggleMode = !rangeMode && (e.metaKey || e.ctrlKey)
+    marqueeStartRef.current = {
+      startX: x,
+      startY: y,
+      cellDay,
+      rangeMode,
+      toggleMode
+    }
+    additiveRef.current = e.shiftKey || e.metaKey || e.ctrlKey || e.altKey
     baseSelectionRef.current = new Set(selection)
     draggedRef.current = false
     if (!cellEl) e.preventDefault()
