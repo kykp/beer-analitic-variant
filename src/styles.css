@@ -70,8 +70,7 @@ h1, h2, h3 {
 }
 
 .topbar-inner {
-  max-width: 1920px;
-  margin: 0 auto;
+  width: 100%;
   padding: 14px 32px;
   display: grid;
   grid-template-columns: 220px 1fr 200px;
@@ -146,8 +145,7 @@ h1, h2, h3 {
 }
 
 .network-bar-inner {
-  max-width: 1920px;
-  margin: 0 auto;
+  width: 100%;
   padding: 10px 32px;
   display: flex;
   align-items: center;

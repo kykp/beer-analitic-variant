@@ -1195,8 +1195,8 @@ function BeerDetails({ beer, monthKey: initialMonthKey = currentMonthKey, onBack
   }, [beer.id, overrides, totalUnits, pinned])
 
   const distributedTotal = useMemo(
-    () => Object.values(overrides).reduce((s, v) => s + v, 0),
-    [overrides]
+    () => monthDays.reduce((s, d) => s + (overrides[d] || 0), 0),
+    [monthDays, overrides]
   )
 
   const shippedToDate = useMemo(
@@ -1338,9 +1338,12 @@ function BeerDetails({ beer, monthKey: initialMonthKey = currentMonthKey, onBack
       return next
     })
     const targetSet = new Set(targets)
-    const otherSum = Object.entries(overrides)
-      .filter(([d]) => !targetSet.has(d))
-      .reduce((s, [, v]) => s + v, 0)
+    // Считаем только текущий месяц — overrides seed-ится из beer.salesByDay,
+    // где лежат данные за ~13 месяцев. Раньше otherSum забирал всё подряд и
+    // «Итоговый план» распухал на сумму соседних месяцев.
+    const otherSum = monthDays
+      .filter((d) => !targetSet.has(d))
+      .reduce((s, d) => s + (overrides[d] || 0), 0)
     const applied = isSplit ? clean : clean * n
     setTotalUnits(otherSum + applied)
     setSelection(new Set())
