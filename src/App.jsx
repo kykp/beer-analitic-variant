@@ -249,6 +249,7 @@ export default function App() {
   const [brandMenu, setBrandMenu] = useState(null)
   const [viewMode, setViewMode] = useState('plan') // 'plan' | 'variance'
   const [activeMonthKey, setActiveMonthKey] = useState(currentMonthKey)
+  const [hidePastInTable, setHidePastInTable] = useState(false)
 
   const availableMonths = useMemo(() => {
     // текущий месяц + 3 вперёд
@@ -303,6 +304,12 @@ export default function App() {
     () => monthDays.filter((d) => d >= todayStr),
     [monthDays]
   )
+
+  const visibleMonthDays = useMemo(
+    () => (hidePastInTable ? monthDays.filter((d) => d >= todayStr) : monthDays),
+    [monthDays, hidePastInTable]
+  )
+  const hasTodayInMonth = useMemo(() => monthDays.includes(todayStr), [monthDays])
 
   const beerRows = useMemo(
     () =>
@@ -652,13 +659,32 @@ export default function App() {
                 <tr>
                   <th className="sticky-col name-col">Наименование</th>
                   <th className="actions-col" aria-label="Действия"></th>
-                  {monthDays.map((day) => {
+                  {visibleMonthDays.map((day) => {
                     const h = dayInfo(day)
                     return (
                       <th
                         key={day}
                         className={`num day-col ${h.isWeekend ? 'weekend' : ''} ${h.isPast ? 'past' : ''} ${h.isToday ? 'today' : ''} ${h.isWeekEnd ? 'week-end' : ''}`}
                       >
+                        {h.isToday && hasTodayInMonth && (
+                          <button
+                            type="button"
+                            className={`table-today-tab ${hidePastInTable ? 'is-expand' : 'is-collapse'}`}
+                            onClick={() => setHidePastInTable((v) => !v)}
+                            title={
+                              hidePastInTable
+                                ? `Показать прошедшие дни (${monthDays.length - visibleMonthDays.length})`
+                                : 'Свернуть прошедшие дни'
+                            }
+                            aria-label={
+                              hidePastInTable
+                                ? 'Показать прошедшие дни'
+                                : 'Свернуть прошедшие дни'
+                            }
+                          >
+                            {hidePastInTable ? '»' : '«'}
+                          </button>
+                        )}
                         <div className="day-num">{h.num}</div>
                         <div className="day-dow">{h.dow}</div>
                       </th>
@@ -713,7 +739,7 @@ export default function App() {
                             <KebabIcon />
                           </button>
                         </td>
-                        {monthDays.map((day) => {
+                        {visibleMonthDays.map((day) => {
                           const h = dayInfo(day)
                           return (
                             <td
@@ -768,7 +794,7 @@ export default function App() {
                                 <KebabIcon />
                               </button>
                             </td>
-                            {monthDays.map((day) => {
+                            {visibleMonthDays.map((day) => {
                               const h = dayInfo(day)
                               return (
                                 <td
@@ -806,7 +832,7 @@ export default function App() {
                 })}
                 <tr className="total-row">
                   <td className="sticky-col name-col strong" colSpan={2}>Итого за день</td>
-                  {monthDays.map((day) => {
+                  {visibleMonthDays.map((day) => {
                     const h = dayInfo(day)
                     return (
                       <td

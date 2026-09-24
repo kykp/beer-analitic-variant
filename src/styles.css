@@ -802,6 +802,54 @@ td.name-col.beer-name {
     inset 2px 0 0 rgba(37, 99, 235, 0.35),
     inset -2px 0 0 rgba(37, 99, 235, 0.35),
     inset 0 2px 0 rgba(37, 99, 235, 0.35);
+  position: relative;
+  overflow: visible;
+}
+
+.table-today-tab {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translate(-100%, -50%);
+  height: 28px;
+  min-width: 18px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 6px 0 0 6px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.14s ease, transform 0.14s ease, background 0.14s ease;
+  z-index: 3;
+  box-shadow: -1px 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.days-table thead th.today:hover .table-today-tab,
+.table-today-tab:hover,
+.table-today-tab:focus-visible {
+  opacity: 1;
+}
+
+.table-today-tab.is-expand {
+  opacity: 0.6;
+}
+
+.table-today-tab.is-expand:hover,
+.table-today-tab.is-expand:focus-visible {
+  opacity: 1;
+  background: var(--accent-strong, var(--accent));
+}
+
+.table-today-tab:active {
+  transform: translate(-100%, -50%) scale(0.94);
 }
 
 .days-table thead th.today .day-num {
