@@ -1733,6 +1733,7 @@ function BrandDetails({
     [selArr]
   )
   const selWeekends = nSel - selWorkdays
+  const selPct = monthTotal > 0 ? (selSum / monthTotal) * 100 : 0
 
   const skuBreakdown = useMemo(() => {
     if (nSel === 0) return []
@@ -2151,7 +2152,14 @@ function BrandDetails({
                             </span>
                           )}
                           {units > 0 && (
-                            <span className="ship-cell-units">{formatNumber(units)}</span>
+                            <>
+                              <span className="ship-cell-units">{formatNumber(units)}</span>
+                              {monthTotal > 0 && (
+                                <span className="ship-cell-pct">
+                                  {((units / monthTotal) * 100).toFixed(1)}%
+                                </span>
+                              )}
+                            </>
                           )}
                         </button>
                       )
@@ -2311,6 +2319,7 @@ function BrandDetails({
                       <span className="rail-stat-side-val">{formatNumber(selSum)} гл</span>
                       <span className="rail-stat-side-sub">
                         {skuBreakdown.filter((r) => r.val > 0).length} SKU
+                        {monthTotal > 0 && ` · ${selPct.toFixed(1)}%`}
                       </span>
                     </div>
                   </div>
@@ -2338,6 +2347,7 @@ function BrandDetails({
                       <span className="rail-stat-val">{nSel}</span>
                       <span className="rail-stat-label">
                         {nSel < 5 ? 'дня' : 'дней'} · {formatNumber(selSum)} гл
+                        {monthTotal > 0 && ` · ${Math.round(selPct)}%`}
                       </span>
                     </div>
                     <div className="rail-stat-side">

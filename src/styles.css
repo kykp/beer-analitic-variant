@@ -2284,8 +2284,8 @@ thead .total-col {
 .rail-selection-stats {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 14px 16px;
   background: var(--bg-alt);
   border-radius: 10px;
   margin-bottom: 12px;
@@ -2294,7 +2294,7 @@ thead .total-col {
 .rail-stat-main {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -2303,27 +2303,33 @@ thead .total-col {
   display: flex;
   flex-direction: row;
   align-items: baseline;
-  gap: 12px;
-  font-size: 12px;
+  gap: 14px;
+  font-size: 14px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
 .rail-stat-side-val {
+  font-size: 22px;
   font-weight: 600;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1;
 }
 
 .rail-stat-side-sub {
-  font-size: 12px;
-  color: var(--muted);
+  font-size: 14px;
+  color: var(--text-soft, var(--text));
+  font-weight: 500;
 }
 
 .rail-stat-full {
-  font-size: 12px;
-  color: var(--muted);
-  padding-top: 6px;
+  font-size: 13px;
+  color: var(--text-soft, var(--muted));
+  padding-top: 8px;
   border-top: 1px dashed var(--border);
+  font-weight: 500;
 }
 
 .rail-stat-locked {
@@ -2335,30 +2341,35 @@ thead .total-col {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.rail-locked-inline svg {
-  width: 10px;
-  height: 10px;
-}
-
-.rail-stat-val {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
-
-.rail-stat-label {
   font-size: 12px;
   color: var(--muted);
 }
 
+.rail-locked-inline svg {
+  width: 12px;
+  height: 12px;
+}
+
+.rail-stat-val {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.rail-stat-label {
+  font-size: 22px;
+  color: var(--text-soft, var(--text));
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+}
+
 .rail-single-date {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--text);
 }
