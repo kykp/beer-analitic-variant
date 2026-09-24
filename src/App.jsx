@@ -657,8 +657,7 @@ export default function App() {
             <table className="beer-table days-table">
               <thead>
                 <tr>
-                  <th className="sticky-col name-col">Наименование</th>
-                  <th className="actions-col" aria-label="Действия"></th>
+                  <th className="sticky-col name-col" colSpan={2}>Наименование</th>
                   {visibleMonthDays.map((day) => {
                     const h = dayInfo(day)
                     return (
