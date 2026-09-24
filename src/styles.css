@@ -2640,11 +2640,11 @@ thead .total-col {
 }
 
 .ship-cell {
-  min-height: 44px;
+  min-height: 88px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #fff;
-  padding: 3px 6px;
+  padding: 8px 10px;
   display: grid;
   grid-template-columns: auto 1fr;
   grid-template-rows: auto 1fr auto;
@@ -2780,7 +2780,7 @@ thead .total-col {
 
 .ship-cell-day {
   grid-area: day;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
@@ -2791,7 +2791,7 @@ thead .total-col {
   grid-area: units;
   align-self: center;
   justify-self: center;
-  font-size: 13px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -2801,7 +2801,7 @@ thead .total-col {
 
 .ship-cell-pct {
   grid-area: pct;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--muted);
   line-height: 1;
@@ -4379,43 +4379,4 @@ thead .spark-col {
 .variance-total-row td.remaining-col.var-green,
 .variance-total-row td.total-col.var-green {
   color: var(--success);
-}
-
-/* SKU-панель календаря (has-marquee = только SKU): компактнее и уже,
-   BrandDetails-heatmap не задет — brand-cell отдельные размеры. */
-.ship-panel.has-marquee {
-  max-width: 640px;
-  padding: 14px 16px;
-}
-
-.ship-panel.has-marquee .ship-toolbar {
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.ship-panel.has-marquee .ship-month {
-  font-size: 13px;
-}
-
-.ship-panel.has-marquee .ship-calendar {
-  margin-top: 8px;
-  padding-top: 8px;
-}
-
-.ship-panel.has-marquee .ship-calendar .calendar-head {
-  gap: 3px;
-  margin-bottom: 3px;
-}
-
-.ship-panel.has-marquee .ship-calendar .calendar-head-cell {
-  font-size: 9px;
-  padding: 2px 0;
-}
-
-.ship-panel.has-marquee .ship-calendar .calendar-body {
-  gap: 3px;
-}
-
-.ship-panel.has-marquee .ship-calendar .calendar-row {
-  gap: 3px;
 }
