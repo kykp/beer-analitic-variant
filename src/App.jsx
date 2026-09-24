@@ -1733,6 +1733,7 @@ function BrandDetails({
     [selArr]
   )
   const selWeekends = nSel - selWorkdays
+  const selPct = monthTotal > 0 ? (selSum / monthTotal) * 100 : 0
 
   const skuBreakdown = useMemo(() => {
     if (nSel === 0) return []
@@ -2151,7 +2152,14 @@ function BrandDetails({
                             </span>
                           )}
                           {units > 0 && (
-                            <span className="ship-cell-units">{formatNumber(units)}</span>
+                            <>
+                              <span className="ship-cell-units">{formatNumber(units)}</span>
+                              {monthTotal > 0 && (
+                                <span className="ship-cell-pct">
+                                  {((units / monthTotal) * 100).toFixed(2)}%
+                                </span>
+                              )}
+                            </>
                           )}
                         </button>
                       )
@@ -2311,6 +2319,7 @@ function BrandDetails({
                       <span className="rail-stat-side-val">{formatNumber(selSum)} гл</span>
                       <span className="rail-stat-side-sub">
                         {skuBreakdown.filter((r) => r.val > 0).length} SKU
+                        {monthTotal > 0 && ` · ${selPct.toFixed(2)}%`}
                       </span>
                     </div>
                   </div>
@@ -2337,9 +2346,13 @@ function BrandDetails({
                     <div className="rail-stat-main">
                       <span className="rail-stat-val">{nSel}</span>
                       <span className="rail-stat-label">
-                        {nSel < 5 ? 'дня' : 'дней'} · {formatNumber(selSum)} гл
+                        {nSel < 5 ? 'дня' : 'дней'}
                       </span>
                     </div>
+                    <span className="rail-stat-label">
+                      <strong className="rail-stat-hl">{formatNumber(selSum)} гл</strong>
+                      {monthTotal > 0 && ` — ${selPct.toFixed(2)}%`}
+                    </span>
                     <div className="rail-stat-side">
                       <span className="rail-stat-side-sub">будни {selWorkdays}</span>
                       <span className="rail-stat-side-sub">вых. {selWeekends}</span>
@@ -3312,14 +3325,14 @@ function PlanRail({
                 <span className="rail-stat-val">{nSel}</span>
                 <span className="rail-stat-label">
                   {nSel < 5 ? 'дня' : 'дней'}
-                  {anySelHasValue && (
-                    <>
-                      {' · '}
-                      {formatNumber(selSum)} гл · {Math.round(selPct)}%
-                    </>
-                  )}
                 </span>
               </div>
+              {anySelHasValue && (
+                <span className="rail-stat-label">
+                  <strong className="rail-stat-hl">{formatNumber(selSum)} гл</strong>
+                  {totalUnits > 0 && ` — ${selPct.toFixed(2)}%`}
+                </span>
+              )}
               <div className="rail-stat-side">
                 <span className="rail-stat-side-sub">будни {selWorkdays}</span>
                 <span className="rail-stat-side-sub">вых. {selWeekends}</span>
