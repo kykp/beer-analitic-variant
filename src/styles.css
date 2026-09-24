@@ -2368,6 +2368,11 @@ thead .total-col {
   line-height: 1.05;
 }
 
+.rail-stat-hl {
+  font-weight: 700;
+  color: var(--text);
+}
+
 .rail-single-date {
   font-size: 17px;
   font-weight: 600;
