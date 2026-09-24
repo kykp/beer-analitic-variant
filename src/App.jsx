@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   beerData as initialBeerData,
   chains,
@@ -509,7 +509,10 @@ export default function App() {
   }
 
   function handleSelectChain(id) {
-    if (id === selectedChainId) return
+    if (id === selectedChainId) {
+      setPendingChainId(null)
+      return
+    }
     setPendingChainId(id)
   }
 
@@ -929,10 +932,6 @@ function TopBar({
   onCancelChainSwitch
 }) {
   const currentChain = chainList?.find((c) => c.id === selectedChainId)
-  const pendingChain =
-    pendingChainId != null
-      ? chainList?.find((c) => c.id === pendingChainId)
-      : null
   return (
     <>
       <div
@@ -976,31 +975,36 @@ function TopBar({
             selectedChainId={selectedChainId}
             onSelectChain={onSelectChain}
             logos={chainLogos || {}}
+            pendingChainId={pendingChainId}
+            currentChain={currentChain}
+            onConfirmChainSwitch={onConfirmChainSwitch}
+            onCancelChainSwitch={onCancelChainSwitch}
           />
         )}
       </div>
-      {pendingChain && currentChain && (
-        <ConfirmChainSwitchDialog
-          from={currentChain}
-          to={pendingChain}
-          fromLogo={chainLogos?.[currentChain.id]}
-          toLogo={chainLogos?.[pendingChain.id]}
-          onCancel={onCancelChainSwitch}
-          onConfirm={onConfirmChainSwitch}
-        />
-      )}
     </>
   )
 }
 
-function ConfirmChainSwitchDialog({
-  from,
-  to,
-  fromLogo,
-  toLogo,
-  onCancel,
-  onConfirm
-}) {
+function ChainSwitchPopover({ from, to, toLogo, onCancel, onConfirm }) {
+  const popRef = useRef(null)
+  // Дефолт — popover уходит вниз-налево (правый край popover совмещён с правым краем кнопки).
+  // Если такое положение вылезает за левый край экрана — flip на 'left' (растёт направо).
+  const [align, setAlign] = useState('right')
+
+  useLayoutEffect(() => {
+    const el = popRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const vw = window.innerWidth || document.documentElement.clientWidth
+    const margin = 8
+    if (align === 'right' && rect.left < margin) {
+      setAlign('left')
+    } else if (align === 'left' && rect.right > vw - margin) {
+      setAlign('right')
+    }
+  }, [align])
+
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') {
@@ -1011,83 +1015,76 @@ function ConfirmChainSwitchDialog({
         onConfirm?.()
       }
     }
+    function onDocPointer(e) {
+      if (!popRef.current) return
+      if (popRef.current.contains(e.target)) return
+      // Клики по вкладкам сети — не отменяем: parent сам переключит pending или закроет.
+      if (e.target.closest?.('.network-tab')) return
+      onCancel?.()
+    }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDocPointer)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDocPointer)
+    }
   }, [onCancel, onConfirm])
 
+  const hideLabel = Boolean(to.hasWordmark && toLogo)
   return (
-    <div className="dialog-overlay" onClick={onCancel}>
-      <div
-        className="dialog chain-switch-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="chain-switch-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="dialog-title" id="chain-switch-title">
-          Переключить сеть?
-        </div>
-        <div className="chain-switch-flow">
-          <div className="chain-switch-step-label">Сейчас</div>
-          <span aria-hidden="true" />
-          <div className="chain-switch-step-label">Переключить на</div>
-          <div
-            className="chain-switch-card is-from"
-            style={{ '--brand-color': from.color || '#111827' }}
-          >
-            {fromLogo && (
-              <img
-                src={fromLogo}
-                alt={from.hasWordmark ? from.name : ''}
-                className="chain-switch-card-logo"
-              />
-            )}
-            {!from.hasWordmark && (
-              <span className="chain-switch-card-name">{from.name}</span>
-            )}
-          </div>
-          <span className="chain-switch-arrow" aria-hidden="true">
-            →
-          </span>
-          <div
-            className="chain-switch-card is-to"
-            style={{ '--brand-color': to.color || '#111827' }}
-          >
-            {toLogo && (
-              <img
-                src={toLogo}
-                alt={to.hasWordmark ? to.name : ''}
-                className="chain-switch-card-logo"
-              />
-            )}
-            {!to.hasWordmark && (
-              <span className="chain-switch-card-name">{to.name}</span>
-            )}
-          </div>
-        </div>
-        <p className="chain-switch-note">
-          План «{from.name}» сохранён — вернётесь и продолжите. План «{to.name}
-          » откроется на главной.
-        </p>
-        <div className="dialog-actions">
-          <button className="btn" onClick={onCancel}>
-            Отмена
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={onConfirm}
-            autoFocus
-            style={{ '--brand-color': to.color || '#111827' }}
-          >
-            Переключить
-          </button>
-        </div>
+    <div
+      ref={popRef}
+      className={`chain-switch-popover is-align-${align}`}
+      role="dialog"
+      aria-label={`Переключить сеть на ${to.name}`}
+      style={{ '--brand-color': to.color || '#111827' }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="chain-switch-popover-arrow" aria-hidden="true" />
+      <div className="chain-switch-popover-title">
+        <span>Переключить на</span>
+        <span className="chain-switch-popover-target">
+          {toLogo && (
+            <img
+              src={toLogo}
+              alt={hideLabel ? to.name : ''}
+              className="chain-switch-popover-logo"
+            />
+          )}
+          {!hideLabel && <span>{to.name}</span>}
+        </span>
+        <span>?</span>
+      </div>
+      <div className="chain-switch-popover-note">
+        План «{from.name}» сохранится — вернётесь и продолжите.
+      </div>
+      <div className="chain-switch-popover-actions">
+        <button className="btn" type="button" onClick={onCancel}>
+          Отмена
+        </button>
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={onConfirm}
+          autoFocus
+        >
+          Переключить
+        </button>
       </div>
     </div>
   )
 }
 
-function NetworkBar({ chains: chainList, selectedChainId, onSelectChain, logos }) {
+function NetworkBar({
+  chains: chainList,
+  selectedChainId,
+  onSelectChain,
+  logos,
+  pendingChainId,
+  currentChain,
+  onConfirmChainSwitch,
+  onCancelChainSwitch
+}) {
   return (
     <div className="network-bar">
       <div className="network-bar-inner">
@@ -1099,31 +1096,46 @@ function NetworkBar({ chains: chainList, selectedChainId, onSelectChain, logos }
         >
           {chainList.map((chain) => {
             const isActive = chain.id === selectedChainId
+            const isPending = chain.id === pendingChainId
             const brandColor = chain.color || '#111827'
             const hideLabel = Boolean(chain.hasWordmark && logos[chain.id])
             return (
-              <button
-                key={chain.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                aria-label={chain.name}
-                className={`network-tab ${isActive ? 'is-active' : ''}`}
-                style={{ '--brand-color': brandColor }}
-                onClick={() => onSelectChain?.(chain.id)}
-                title={chain.name}
-              >
-                {logos[chain.id] && (
-                  <img
-                    src={logos[chain.id]}
-                    alt={hideLabel ? chain.name : ''}
-                    className="network-tab-logo"
+              <div key={chain.id} className="network-tab-wrap">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-haspopup="dialog"
+                  aria-expanded={isPending || undefined}
+                  aria-label={chain.name}
+                  className={`network-tab ${isActive ? 'is-active' : ''} ${
+                    isPending ? 'is-pending' : ''
+                  }`}
+                  style={{ '--brand-color': brandColor }}
+                  onClick={() => onSelectChain?.(chain.id)}
+                  title={chain.name}
+                >
+                  {logos[chain.id] && (
+                    <img
+                      src={logos[chain.id]}
+                      alt={hideLabel ? chain.name : ''}
+                      className="network-tab-logo"
+                    />
+                  )}
+                  {!hideLabel && (
+                    <span className="network-tab-label">{chain.name}</span>
+                  )}
+                </button>
+                {isPending && currentChain && currentChain.id !== chain.id && (
+                  <ChainSwitchPopover
+                    from={currentChain}
+                    to={chain}
+                    toLogo={logos[chain.id]}
+                    onCancel={onCancelChainSwitch}
+                    onConfirm={onConfirmChainSwitch}
                   />
                 )}
-                {!hideLabel && (
-                  <span className="network-tab-label">{chain.name}</span>
-                )}
-              </button>
+              </div>
             )
           })}
         </div>

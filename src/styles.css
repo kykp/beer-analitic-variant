@@ -232,111 +232,135 @@ h1, h2, h3 {
   color: var(--text);
 }
 
-/* ---------- Chain switch confirmation dialog ---------- */
+/* ---------- Chain switch confirmation popover ---------- */
 
-.chain-switch-dialog {
-  width: fit-content;
-  max-width: 460px;
-}
-
-.chain-switch-dialog .dialog-title {
-  text-transform: none;
-  text-align: center;
-}
-
-.chain-switch-dialog .dialog-actions {
-  justify-content: center;
-  margin-top: 4px;
-}
-
-.chain-switch-dialog .dialog-actions .btn {
-  white-space: nowrap;
-}
-
-.chain-switch-flow {
-  display: grid;
-  grid-template-columns: auto auto auto;
-  grid-template-rows: auto auto;
-  column-gap: 14px;
-  row-gap: 6px;
-  align-items: center;
-  justify-items: center;
-  justify-content: center;
-  margin: 12px 0 4px;
-}
-
-.chain-switch-step-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  text-align: center;
-}
-
-.chain-switch-card {
-  --brand-color: #111827;
-  padding: 12px 16px;
-  border: 1px solid color-mix(in srgb, var(--brand-color) 40%, var(--border));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--brand-color) 8%, #fff);
+.network-tab-wrap {
+  position: relative;
   display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 140px;
-  justify-content: center;
 }
 
-.chain-switch-card.is-from {
-  opacity: 0.7;
+.network-tab.is-pending {
+  border-color: color-mix(in srgb, var(--brand-color) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-color) 20%, transparent);
 }
 
-.chain-switch-card-logo {
-  height: 22px;
-  width: auto;
-  max-width: 110px;
-  display: block;
-  flex-shrink: 0;
+.chain-switch-popover {
+  --brand-color: #111827;
+  position: absolute;
+  top: calc(100% + 12px);
+  z-index: 120;
+  width: max-content;
+  min-width: 260px;
+  max-width: min(320px, calc(100vw - 32px));
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow:
+    0 12px 32px -12px rgba(15, 23, 42, 0.28),
+    0 4px 12px -6px rgba(15, 23, 42, 0.18);
+  padding: 14px 14px 12px;
+  animation: chain-switch-popover-in 0.14s ease-out;
 }
 
-.chain-switch-card-name {
-  font-size: 14px;
-  font-weight: 700;
+/* По умолчанию popover уходит вниз-налево: правый край поповера якорится к правому краю кнопки. */
+.chain-switch-popover.is-align-right {
+  right: 0;
+  left: auto;
+}
+
+/* Flip: когда упирается в левый край экрана — растём направо. */
+.chain-switch-popover.is-align-left {
+  left: 0;
+  right: auto;
+}
+
+@keyframes chain-switch-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chain-switch-popover-arrow {
+  position: absolute;
+  top: -7px;
+  width: 12px;
+  height: 12px;
+  transform: rotate(45deg);
+  background: #fff;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  border-top-left-radius: 3px;
+}
+
+.chain-switch-popover.is-align-right .chain-switch-popover-arrow {
+  right: 20px;
+  left: auto;
+}
+
+.chain-switch-popover.is-align-left .chain-switch-popover-arrow {
+  left: 20px;
+  right: auto;
+}
+
+.chain-switch-popover-title {
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text);
-  letter-spacing: -0.01em;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chain-switch-arrow {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  color: var(--muted-2);
-  font-weight: 400;
-  line-height: 1;
+  flex-wrap: wrap;
+  gap: 6px;
+  line-height: 1.35;
 }
 
-.chain-switch-note {
-  margin: 10px 0 16px;
+.chain-switch-popover-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--brand-color) 10%, #fff);
+  border: 1px solid color-mix(in srgb, var(--brand-color) 30%, var(--border));
+  font-weight: 700;
+  color: var(--text);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chain-switch-popover-logo {
+  height: 16px;
+  width: auto;
+  max-width: 100px;
+  display: block;
+}
+
+.chain-switch-popover-note {
+  margin: 8px 0 12px;
   font-size: 12px;
   color: var(--muted);
-  line-height: 1.5;
-  text-align: center;
+  line-height: 1.4;
 }
 
-.chain-switch-dialog .btn-primary {
-  background: color-mix(in srgb, var(--brand-color, var(--navy)) 75%, #000);
-  border-color: color-mix(in srgb, var(--brand-color, var(--navy)) 75%, #000);
+.chain-switch-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chain-switch-popover-actions .btn-primary {
+  background: color-mix(in srgb, var(--brand-color) 75%, #000);
+  border-color: color-mix(in srgb, var(--brand-color) 75%, #000);
   color: #fff;
 }
 
-.chain-switch-dialog .btn-primary:hover {
-  background: color-mix(in srgb, var(--brand-color, var(--navy)) 60%, #000);
-  border-color: color-mix(in srgb, var(--brand-color, var(--navy)) 60%, #000);
+.chain-switch-popover-actions .btn-primary:hover {
+  background: color-mix(in srgb, var(--brand-color) 60%, #000);
+  border-color: color-mix(in srgb, var(--brand-color) 60%, #000);
 }
 
 /* ---------- PAGE ---------- */
@@ -2616,11 +2640,11 @@ thead .total-col {
 }
 
 .ship-cell {
-  min-height: 88px;
+  min-height: 44px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #fff;
-  padding: 8px 10px;
+  padding: 3px 6px;
   display: grid;
   grid-template-columns: auto 1fr;
   grid-template-rows: auto 1fr auto;
@@ -2756,7 +2780,7 @@ thead .total-col {
 
 .ship-cell-day {
   grid-area: day;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
@@ -2767,7 +2791,7 @@ thead .total-col {
   grid-area: units;
   align-self: center;
   justify-self: center;
-  font-size: 22px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -2777,7 +2801,7 @@ thead .total-col {
 
 .ship-cell-pct {
   grid-area: pct;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 500;
   color: var(--muted);
   line-height: 1;
@@ -4355,4 +4379,43 @@ thead .spark-col {
 .variance-total-row td.remaining-col.var-green,
 .variance-total-row td.total-col.var-green {
   color: var(--success);
+}
+
+/* SKU-панель календаря (has-marquee = только SKU): компактнее и уже,
+   BrandDetails-heatmap не задет — brand-cell отдельные размеры. */
+.ship-panel.has-marquee {
+  max-width: 640px;
+  padding: 14px 16px;
+}
+
+.ship-panel.has-marquee .ship-toolbar {
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ship-panel.has-marquee .ship-month {
+  font-size: 13px;
+}
+
+.ship-panel.has-marquee .ship-calendar {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.ship-panel.has-marquee .ship-calendar .calendar-head {
+  gap: 3px;
+  margin-bottom: 3px;
+}
+
+.ship-panel.has-marquee .ship-calendar .calendar-head-cell {
+  font-size: 9px;
+  padding: 2px 0;
+}
+
+.ship-panel.has-marquee .ship-calendar .calendar-body {
+  gap: 3px;
+}
+
+.ship-panel.has-marquee .ship-calendar .calendar-row {
+  gap: 3px;
 }
